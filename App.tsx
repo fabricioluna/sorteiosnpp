@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
 import StarRating from './components/StarRating';
+// Importando a imagem diretamente da raiz
+import logoSnpp from './logosnpp.png';
 
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>('input');
@@ -9,14 +11,38 @@ const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
 
+  // --- PERSISTÊNCIA DE DADOS (LocalStorage) ---
+  // Carregar dados ao iniciar
+  useEffect(() => {
+    const savedPlayers = localStorage.getItem('snpp_players');
+    const savedStep = localStorage.getItem('snpp_step');
+    const savedTeams = localStorage.getItem('snpp_teams');
+
+    if (savedPlayers) {
+      const parsedPlayers = JSON.parse(savedPlayers);
+      if (parsedPlayers.length > 0) setPlayers(parsedPlayers);
+    }
+    if (savedTeams) setTeams(JSON.parse(savedTeams));
+    // Só restaura o passo se houver jogadores
+    if (savedStep && savedPlayers && JSON.parse(savedPlayers).length > 0) {
+      setStep(savedStep as AppStep);
+    }
+  }, []);
+
+  // Salvar dados a cada alteração
+  useEffect(() => {
+    localStorage.setItem('snpp_players', JSON.stringify(players));
+    localStorage.setItem('snpp_step', step);
+    localStorage.setItem('snpp_teams', JSON.stringify(teams));
+  }, [players, step, teams]);
+
   const handleGenerateList = () => {
     const lines = rawText.split('\n');
-    // Regex para limpar: remove números iniciais, emojis e caracteres especiais
     const allCleanedNames = lines
       .map((line) => {
         return line
-          .replace(/^[\d\.\-\:\)\(\[\]\s]+/, '') // Remove números e pontuação no início da linha
-          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') // Remove emojis
+          .replace(/^[\d\.\-\:\)\(\[\]\s]+/, '') 
+          .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') 
           .trim();
       })
       .filter(name => name.length >= 2);
@@ -28,14 +54,11 @@ const App: React.FC = () => {
       return;
     }
 
-    // Validação de quantidade conforme solicitado
     if (totalFound > 20) {
-      alert(`Atenção: Foram encontrados ${totalFound} atletas. Isso ultrapassa o limite de 20 atletas. Apenas os primeiros 20 serão considerados para a pelada.`);
+      alert(`Atenção: Foram encontrados ${totalFound} atletas. Apenas os primeiros 20 serão considerados.`);
     } else if (totalFound < 20) {
-      const confirmProceed = confirm(`Foram encontrados ${totalFound} atletas. O sorteio ideal é com 20 atletas. Deseja realizar o sorteio mesmo assim? (Os últimos times podem ficar incompletos)`);
+      const confirmProceed = confirm(`Foram encontrados apenas ${totalFound} atletas. Deseja continuar?`);
       if (!confirmProceed) return;
-    } else {
-      alert(`Sucesso! Exatamente ${totalFound} atletas identificados.`);
     }
 
     const finalPlayers: Player[] = allCleanedNames
@@ -43,12 +66,13 @@ const App: React.FC = () => {
       .map((name, idx) => ({
         id: `player-${idx}-${Date.now()}`,
         name,
-        position: 'Meia' as Position,
-        level: 3
+        position: 'Meia' as Position, // Posição padrão
+        level: 1 // Nível padrão alterado para 1 (era 3)
       }));
 
     setPlayers(finalPlayers);
     setStep('classify');
+    setRawText(''); // Limpa o input para não duplicar visualmente
   };
 
   const handleUpdatePlayer = (id: string, updates: Partial<Player>) => {
@@ -61,29 +85,47 @@ const App: React.FC = () => {
     setStep('results');
   };
 
+  const handleReset = () => {
+    if (confirm('Tem certeza? Isso apagará todos os dados atuais.')) {
+      setStep('input');
+      setPlayers([]);
+      setTeams([]);
+      localStorage.removeItem('snpp_players');
+      localStorage.removeItem('snpp_step');
+      localStorage.removeItem('snpp_teams');
+    }
+  };
+
   const handleCopyTeams = () => {
     const text = teams
       .filter(t => t.players.length > 0)
       .map(t => {
         const playerList = t.players.map(p => `• ${p.name} (${p.position})`).join('\n');
-        const forceInfo = t.players.length === 5 ? `(Força Total: ${t.totalLevel})` : '(Time Incompleto)';
+        const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
         return `*${t.name}* ${forceInfo}\n${playerList}`;
       }).join('\n\n');
 
-    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR - TIMES SORTEADOS* ⚽\n\n${text}`)
-      .then(() => alert('Times copiados para o WhatsApp!'))
-      .catch(() => alert('Erro ao copiar times.'));
+    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n\n${text}`)
+      .then(() => alert('Copiado para o WhatsApp!'))
+      .catch(() => alert('Erro ao copiar.'));
   };
 
+  // Ícones para os botões de posição
+  const positions: { id: Position; icon: string; label: string }[] = [
+    { id: 'Zagueiro', icon: '🛡️', label: 'Zag' },
+    { id: 'Meia', icon: '🎯', label: 'Meia' },
+    { id: 'Atacante', icon: '🚀', label: 'Ata' },
+  ];
+
   return (
-    <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100">
+    <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white">
       
-      {/* Header Atualizado com Brasão */}
+      {/* Header */}
       <header className="w-full py-8 flex flex-col items-center justify-center space-y-4">
         <div className="w-32 h-32 md:w-40 md:h-40 relative drop-shadow-2xl hover:scale-105 transition-transform duration-300">
           <img
-            src="/logosnpp.png"
-            alt="Brasão O Show Não Pode Parar"
+            src={logoSnpp} 
+            alt="Brasão SNPP"
             className="w-full h-full object-contain drop-shadow-lg"
           />
         </div>
@@ -102,14 +144,11 @@ const App: React.FC = () => {
           <div className="bg-slate-900 rounded-2xl shadow-2xl p-6 border border-slate-800 animate-in fade-in zoom-in duration-300">
             <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-orange-500">
               <i className="fa-solid fa-paste"></i>
-              Importar Lista do WhatsApp
+              Importar Lista
             </h2>
-            <p className="text-slate-400 mb-4 text-sm">
-              Cole a lista de atletas abaixo (serão identificados os primeiros 20).
-            </p>
             <textarea
               className="w-full h-64 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none transition-all resize-none mb-6 font-mono text-sm text-gray-200 placeholder-slate-700"
-              placeholder="1. João Silva ⚽&#10;2. Pedro Alcantara 🏃‍♂️&#10;..."
+              placeholder="Cole a lista do WhatsApp aqui..."
               value={rawText}
               onChange={(e) => setRawText(e.target.value)}
             />
@@ -118,7 +157,7 @@ const App: React.FC = () => {
               disabled={!rawText.trim()}
               className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-2"
             >
-              GERAR LISTA DE ATLETAS
+              INICIAR CONVOCAÇÃO
               <i className="fa-solid fa-arrow-right"></i>
             </button>
           </div>
@@ -127,43 +166,52 @@ const App: React.FC = () => {
         {/* STEP 2: CLASSIFY */}
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="p-6 bg-slate-900/50 border-b border-slate-800 flex justify-between items-center">
-              <h2 className="text-xl font-bold text-white">Classificar Atletas ({players.length}/20)</h2>
+            <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex justify-between items-center sticky top-0 z-20 backdrop-blur-md">
+              <h2 className="text-lg md:text-xl font-bold text-white">Classificar ({players.length}/20)</h2>
               <button 
-                onClick={() => setStep('input')}
-                className="text-slate-500 hover:text-red-400 text-sm font-semibold transition-colors"
+                onClick={handleReset}
+                className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-semibold transition-colors flex items-center gap-1"
               >
-                Recomeçar
+                <i className="fa-solid fa-trash"></i> Limpar
               </button>
             </div>
             
             <div className="divide-y divide-slate-800 max-h-[60vh] overflow-y-auto custom-scrollbar">
               {players.map((player) => (
-                <div key={player.id} className="p-4 flex flex-col md:flex-row md:items-center gap-4 hover:bg-slate-800/50 transition-colors">
+                <div key={player.id} className="p-3 md:p-4 flex flex-col md:flex-row md:items-center gap-3 hover:bg-slate-800/50 transition-colors">
+                  {/* Nome do Jogador */}
                   <div className="flex-1">
                     <input
                       type="text"
                       value={player.name}
                       onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })}
-                      className="w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none text-white"
+                      className="w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none text-white truncate"
                     />
                   </div>
                   
-                  <div className="flex flex-wrap items-center gap-6">
-                    <div className="flex items-center gap-2">
-                      <select
-                        value={player.position}
-                        onChange={(e) => handleUpdatePlayer(player.id, { position: e.target.value as Position })}
-                        className="bg-slate-950 text-white rounded-lg px-3 py-2 text-sm font-bold border border-slate-800 outline-none focus:ring-2 focus:ring-orange-500"
-                      >
-                        <option value="Zagueiro">🛡️ Zagueiro</option>
-                        <option value="Meia">🎯 Meia</option>
-                        <option value="Atacante">🚀 Atacante</option>
-                      </select>
+                  <div className="flex justify-between items-center gap-4">
+                    {/* Botões de Posição (Novo Design) */}
+                    <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                      {positions.map((pos) => (
+                        <button
+                          key={pos.id}
+                          onClick={() => handleUpdatePlayer(player.id, { position: pos.id })}
+                          className={`
+                            relative px-3 py-2 rounded-md text-xl transition-all duration-200
+                            ${player.position === pos.id 
+                              ? 'bg-orange-500 text-white shadow-lg scale-105 z-10' 
+                              : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'}
+                          `}
+                          title={pos.label}
+                        >
+                          {pos.icon}
+                        </button>
+                      ))}
                     </div>
 
-                    <div className="flex flex-col items-start md:items-center">
-                      <span className="text-[10px] uppercase text-slate-500 font-bold mb-1">Nível Técnico</span>
+                    {/* Estrelas */}
+                    <div className="flex flex-col items-end md:items-center min-w-[100px]">
+                      <span className="text-[9px] uppercase text-slate-500 font-bold mb-0.5 tracking-wider">Nível</span>
                       <StarRating
                         rating={player.level}
                         onChange={(val) => handleUpdatePlayer(player.id, { level: val })}
@@ -174,12 +222,12 @@ const App: React.FC = () => {
               ))}
             </div>
 
-            <div className="p-6 bg-slate-900 border-t border-slate-800">
+            <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-800">
               <button
                 onClick={handleSortTeams}
                 className="w-full py-4 bg-[#1E3A8A] hover:bg-[#254ab2] text-white font-bold rounded-xl shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-700"
               >
-                SORTEAR TIMES EQUILIBRADOS
+                SORTEAR TIMES
                 <i className="fa-solid fa-shuffle"></i>
               </button>
             </div>
@@ -188,57 +236,42 @@ const App: React.FC = () => {
 
         {/* STEP 3: RESULTS */}
         {step === 'results' && (
-          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800">
                <div>
-                  <h2 className="text-2xl font-black text-white italic">É hora do Show! 🏟️</h2>
-                  <p className="text-slate-400">Times balanceados com precisão.</p>
+                  <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
+                  <p className="text-slate-400 text-sm">Prontos para o jogo.</p>
                </div>
-               <div className="flex gap-2">
-                 <button 
-                  onClick={handleCopyTeams}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center gap-2"
-                 >
-                   <i className="fa-brands fa-whatsapp"></i>
-                   COPIAR TIMES
-                 </button>
-               </div>
+               <button 
+                onClick={handleCopyTeams}
+                className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2"
+               >
+                 <i className="fa-brands fa-whatsapp"></i>
+                 Copiar Resultado
+               </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
               {teams.filter(t => t.players.length > 0).map((team, idx) => {
-                const headerColors = [
-                   'bg-blue-800',
-                   'bg-orange-600',
-                   'bg-slate-700',
-                   'bg-yellow-600'
-                ];
-
+                const headerColors = ['bg-blue-800', 'bg-orange-600', 'bg-slate-700', 'bg-yellow-600'];
                 const isFull = team.players.length === 5;
 
                 return (
-                  <div key={team.id} className="rounded-2xl shadow-2xl overflow-hidden border border-slate-800 bg-slate-900 flex flex-col transform hover:scale-[1.02] transition-transform">
-                    <div className={`${headerColors[idx]} text-white p-4 flex justify-between items-center`}>
-                      <div className="flex flex-col">
-                        <h3 className="font-black text-xl uppercase italic tracking-widest">{team.name}</h3>
-                        {!isFull && <span className="text-[10px] font-bold bg-black/30 px-2 py-0.5 rounded">TIME INCOMPLETO</span>}
-                      </div>
+                  <div key={team.id} className="rounded-2xl shadow-2xl overflow-hidden border border-slate-800 bg-slate-900 flex flex-col">
+                    <div className={`${headerColors[idx]} text-white p-3 md:p-4 flex justify-between items-center`}>
+                      <h3 className="font-black text-lg md:text-xl uppercase italic tracking-widest">{team.name}</h3>
                       <div className="flex flex-col items-end">
-                        <span className="text-[10px] uppercase opacity-80 font-bold">
-                          {isFull ? 'Força' : ''}
-                        </span>
-                        <span className="font-black text-xl">
-                          {isFull ? team.totalLevel : ''}
-                        </span>
+                        <span className="text-[10px] uppercase opacity-80 font-bold">{isFull ? 'Força' : ''}</span>
+                        <span className="font-black text-xl">{isFull ? team.totalLevel : ''}</span>
                       </div>
                     </div>
-                    <div className="p-4 flex-1">
-                      <ul className="space-y-3">
+                    <div className="p-3 md:p-4 flex-1">
+                      <ul className="space-y-2 md:space-y-3">
                         {team.players.map((p) => (
-                          <li key={p.id} className="flex justify-between items-center border-b border-slate-800 pb-2">
-                            <div className="flex flex-col">
-                              <span className="font-bold text-gray-100">{p.name}</span>
-                              <span className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</span>
+                          <li key={p.id} className="flex justify-between items-center border-b border-slate-800 pb-2 last:border-0 last:pb-0">
+                            <div>
+                              <div className="font-bold text-gray-100 text-sm md:text-base">{p.name}</div>
+                              <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
                             </div>
                             <div className="flex gap-0.5">
                               {Array.from({ length: 5 }).map((_, i) => (
@@ -254,55 +287,35 @@ const App: React.FC = () => {
               })}
             </div>
 
-            <div className="flex flex-col md:flex-row items-center justify-center gap-4 pt-4">
+            <div className="flex flex-col gap-3 pt-4">
                <button
                   onClick={() => setTeams(balanceTeams(players))}
-                  className="w-full md:w-auto px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2"
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2"
                >
                  <i className="fa-solid fa-rotate-right"></i>
-                 REFRESCAR SORTEIO
+                 Refazer Sorteio
                </button>
                <button
                   onClick={() => setStep('classify')}
-                  className="w-full md:w-auto px-8 py-3 text-slate-400 hover:text-white font-bold transition-colors"
+                  className="w-full py-3 text-slate-400 hover:text-white font-bold transition-colors text-sm"
                >
-                 VOLTAR PARA CLASSIFICAÇÃO
+                 Voltar e Editar Jogadores
                </button>
             </div>
           </div>
         )}
       </main>
 
-      <footer className="mt-20 text-center px-4 pb-16">
-        <div className="inline-block relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-blue-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-          <p className="relative text-orange-500 font-black text-xl md:text-2xl tracking-tighter uppercase italic drop-shadow-[0_2px_10px_rgba(249,115,22,0.3)] animate-pulse-slow">
-            Desenvolvido por Fabrício Luna
-          </p>
-        </div>
+      <footer className="mt-12 text-center px-4 pb-8">
+        <p className="text-orange-500/50 font-black text-sm tracking-widest uppercase italic">
+          O Show Não Pode Parar
+        </p>
       </footer>
 
       <style>{`
-        .custom-scrollbar::-webkit-scrollbar {
-          width: 8px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-track {
-          background: #0f172a;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #1e293b;
-          border-radius: 4px;
-        }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-          background: #334155;
-        }
-        @keyframes pulse-slow {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.85; transform: scale(0.98); }
-        }
-        .animate-pulse-slow {
-          animation: pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-        }
+        .custom-scrollbar::-webkit-scrollbar { width: 4px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
       `}</style>
     </div>
   );
