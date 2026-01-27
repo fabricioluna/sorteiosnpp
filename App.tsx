@@ -12,7 +12,6 @@ const App: React.FC = () => {
   const [teams, setTeams] = useState<Team[]>([]);
 
   // --- PERSISTÊNCIA DE DADOS (LocalStorage) ---
-  // Carregar dados ao iniciar
   useEffect(() => {
     const savedPlayers = localStorage.getItem('snpp_players');
     const savedStep = localStorage.getItem('snpp_step');
@@ -23,13 +22,11 @@ const App: React.FC = () => {
       if (parsedPlayers.length > 0) setPlayers(parsedPlayers);
     }
     if (savedTeams) setTeams(JSON.parse(savedTeams));
-    // Só restaura o passo se houver jogadores
     if (savedStep && savedPlayers && JSON.parse(savedPlayers).length > 0) {
       setStep(savedStep as AppStep);
     }
   }, []);
 
-  // Salvar dados a cada alteração
   useEffect(() => {
     localStorage.setItem('snpp_players', JSON.stringify(players));
     localStorage.setItem('snpp_step', step);
@@ -66,13 +63,13 @@ const App: React.FC = () => {
       .map((name, idx) => ({
         id: `player-${idx}-${Date.now()}`,
         name,
-        position: 'Meia' as Position, // Posição padrão
-        level: 1 // Nível padrão alterado para 1 (era 3)
+        position: 'Meia' as Position,
+        level: 1 
       }));
 
     setPlayers(finalPlayers);
     setStep('classify');
-    setRawText(''); // Limpa o input para não duplicar visualmente
+    setRawText('');
   };
 
   const handleUpdatePlayer = (id: string, updates: Partial<Player>) => {
@@ -110,7 +107,7 @@ const App: React.FC = () => {
       .catch(() => alert('Erro ao copiar.'));
   };
 
-  // Ícones para os botões de posição
+  // Ícones e legendas para os botões
   const positions: { id: Position; icon: string; label: string }[] = [
     { id: 'Zagueiro', icon: '🛡️', label: 'Zag' },
     { id: 'Meia', icon: '🎯', label: 'Meia' },
@@ -190,21 +187,22 @@ const App: React.FC = () => {
                   </div>
                   
                   <div className="flex justify-between items-center gap-4">
-                    {/* Botões de Posição (Novo Design) */}
-                    <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800">
+                    {/* Botões de Posição (COM LEGENDA) */}
+                    <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
                       {positions.map((pos) => (
                         <button
                           key={pos.id}
                           onClick={() => handleUpdatePlayer(player.id, { position: pos.id })}
                           className={`
-                            relative px-3 py-2 rounded-md text-xl transition-all duration-200
+                            relative flex items-center gap-1.5 px-3 py-2 rounded-md transition-all duration-200
                             ${player.position === pos.id 
                               ? 'bg-orange-500 text-white shadow-lg scale-105 z-10' 
                               : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'}
                           `}
                           title={pos.label}
                         >
-                          {pos.icon}
+                          <span className="text-lg md:text-xl">{pos.icon}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider">{pos.label}</span>
                         </button>
                       ))}
                     </div>
