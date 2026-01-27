@@ -1,12 +1,7 @@
-
 import React, { useState } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
 import StarRating from './components/StarRating';
-
-const PRIMARY_ORANGE = '#FF8C00';
-const DEEP_BLUE = '#0F172A'; // Darker blue for background
-const CREST_BLUE = '#1E3A8A'; // Original crest blue
 
 const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>('input');
@@ -82,24 +77,22 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100">
-      {/* Header */}
-      <header className="w-full bg-[#1E3A8A] text-white py-6 shadow-2xl mb-8 relative overflow-hidden border-b-4 border-orange-500">
-        <div className="max-w-4xl mx-auto px-4 flex items-center justify-between relative z-10">
-          <div className="flex items-center gap-4">
-            <div className="bg-white p-1 rounded-full border-2 border-orange-500 shadow-lg">
-               <img src="logosnpp.png" alt="Logo" className="w-12 h-12 rounded-full object-cover" onError={(e) => {
-                 (e.target as HTMLImageElement).src = 'https://img.icons8.com/ios-filled/50/000000/football.png';
-               }} />
-            </div>
-            <div>
-              <h1 className="text-2xl md:text-3xl font-black uppercase italic tracking-tighter leading-none">
-                O Show Não Pode Parar
-              </h1>
-              <p className="text-[10px] opacity-75 font-bold tracking-[0.2em] uppercase">Sorteador Oficial</p>
-            </div>
-          </div>
+      
+      {/* Header Atualizado com Brasão */}
+      <header className="w-full py-8 flex flex-col items-center justify-center space-y-4">
+        <div className="w-32 h-32 md:w-40 md:h-40 relative drop-shadow-2xl hover:scale-105 transition-transform duration-300">
+          <img
+            src="/logosnpp.png"
+            alt="Brasão O Show Não Pode Parar"
+            className="w-full h-full object-contain drop-shadow-lg"
+          />
         </div>
-        <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 opacity-10 -mr-20 -mt-20 rounded-full blur-3xl"></div>
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter text-white drop-shadow-md text-center px-4 font-inter">
+          O Show Não Pode Parar
+        </h1>
+        <p className="text-[10px] opacity-75 font-bold tracking-[0.2em] uppercase text-orange-500">
+          Sorteador Oficial
+        </p>
       </header>
 
       <main className="w-full max-w-4xl px-4 flex-1">
