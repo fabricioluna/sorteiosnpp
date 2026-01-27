@@ -1,0 +1,5 @@
+{
+  "name": "O Show Não Pode Parar - Sorteador de Times",
+  "description": "Um aplicativo para sortear times de futebol de forma equilibrada, baseado em nível técnico e posição dos jogadores.",
+  "requestFramePermissions": []
+}
