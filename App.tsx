@@ -107,7 +107,6 @@ const App: React.FC = () => {
       .catch(() => alert('Erro ao copiar.'));
   };
 
-  // Ícones e legendas para os botões
   const positions: { id: Position; icon: string; label: string }[] = [
     { id: 'Zagueiro', icon: '🛡️', label: 'Zag' },
     { id: 'Meia', icon: '🎯', label: 'Meia' },
@@ -304,16 +303,29 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="mt-12 text-center px-4 pb-8">
-        <p className="text-orange-500/50 font-black text-sm tracking-widest uppercase italic">
-          O Show Não Pode Parar
-        </p>
+      {/* RODAPÉ RESTAURADO COM CRÉDITOS */}
+      <footer className="mt-20 text-center px-4 pb-16">
+        <div className="inline-block relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-blue-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+          <p className="relative text-orange-500 font-black text-xl md:text-2xl tracking-tighter uppercase italic drop-shadow-[0_2px_10px_rgba(249,115,22,0.3)] animate-pulse-slow">
+            Desenvolvido por Fabrício Luna
+          </p>
+        </div>
       </footer>
 
       <style>{`
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-track { background: #0f172a; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+        
+        /* ANIMAÇÃO DE PULSO RESTAURADA */
+        @keyframes pulse-slow {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.85; transform: scale(0.98); }
+        }
+        .animate-pulse-slow {
+          animation: pulse-slow 4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
       `}</style>
     </div>
   );
