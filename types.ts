@@ -1,4 +1,3 @@
-
 export type Position = 'Zagueiro' | 'Meia' | 'Atacante';
 
 export interface Player {
@@ -6,6 +5,7 @@ export interface Player {
   name: string;
   position: Position;
   level: number;
+  isFixedInTeam1?: boolean; // Nova propriedade para os campeões
 }
 
 export interface Team {
