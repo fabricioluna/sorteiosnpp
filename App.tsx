@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
-// Removido import do StarRating pois usaremos seletor numérico direto
 import logoSnpp from './logosnpp.png';
 
 const App: React.FC = () => {
@@ -55,6 +54,10 @@ const App: React.FC = () => {
 
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
+    
+    // MAPA DE JOGADORES EXISTENTES (Para preservar dados)
+    // Cria um mapa onde a chave é o nome em minúsculo para busca rápida
+    const existingPlayersMap = new Map(players.map(p => [p.name.toLowerCase(), p]));
 
     if (useChampionMode) {
       // Lógica COM Time Campeão
@@ -72,22 +75,29 @@ const App: React.FC = () => {
         if (!confirmProceed) return;
       }
 
-      // Cria os objetos dos campeões (Fixos no Time 1)
-      const championObjs = champions.map((name, idx) => ({
-        id: `champ-${idx}-${Date.now()}`,
-        name,
-        position: 'Meia' as Position,
-        level: 10, // Campeões assumimos que são bons, ou padrão alto
-        isFixedInTeam1: true
-      }));
+      // Processa Campeões (Tenta recuperar dados existentes)
+      const championObjs = champions.map((name, idx) => {
+        const existing = existingPlayersMap.get(name.toLowerCase());
+        return {
+          id: existing ? existing.id : `champ-${idx}-${Date.now()}`,
+          name: name,
+          position: existing ? existing.position : 'Meia' as Position,
+          level: existing ? existing.level : 10, // Padrão 10 se for novo campeão
+          isFixedInTeam1: true
+        };
+      });
 
-      // Cria os objetos dos desafiantes
-      const challengerObjs = challengers.slice(0, 15).map((name, idx) => ({
-        id: `player-${idx}-${Date.now()}`,
-        name,
-        position: 'Meia' as Position,
-        level: 5 // Padrão médio na escala 1-10
-      }));
+      // Processa Desafiantes (Tenta recuperar dados existentes)
+      const challengerObjs = challengers.slice(0, 15).map((name, idx) => {
+        const existing = existingPlayersMap.get(name.toLowerCase());
+        return {
+          id: existing ? existing.id : `player-${idx}-${Date.now()}`,
+          name: name,
+          position: existing ? existing.position : 'Meia' as Position,
+          level: existing ? existing.level : 5, // Padrão 5 se for novo
+          isFixedInTeam1: false
+        };
+      });
 
       finalPlayers = [...championObjs, ...challengerObjs];
 
@@ -107,16 +117,33 @@ const App: React.FC = () => {
          if(!confirm(`Apenas ${totalFound} atletas encontrados. Continuar?`)) return;
       }
 
-      finalPlayers = allNames.slice(0, 20).map((name, idx) => ({
-        id: `player-${idx}-${Date.now()}`,
-        name,
-        position: 'Meia' as Position,
-        level: 5 // Padrão médio na escala 1-10
-      }));
+      finalPlayers = allNames.slice(0, 20).map((name, idx) => {
+        const existing = existingPlayersMap.get(name.toLowerCase());
+        return {
+          id: existing ? existing.id : `player-${idx}-${Date.now()}`,
+          name: name,
+          position: existing ? existing.position : 'Meia' as Position,
+          level: existing ? existing.level : 5 // Padrão 5 se for novo
+        };
+      });
     }
 
     setPlayers(finalPlayers);
     setStep('classify');
+  };
+
+  // Função para Voltar e Editar (Preenche os inputs com os dados atuais)
+  const handleBackToInput = () => {
+    if (useChampionMode) {
+      const currentChampions = players.filter(p => p.isFixedInTeam1).map(p => p.name).join('\n');
+      const currentChallengers = players.filter(p => !p.isFixedInTeam1).map(p => p.name).join('\n');
+      setChampionText(currentChampions);
+      setRawText(currentChallengers);
+    } else {
+      const allNames = players.map(p => p.name).join('\n');
+      setRawText(allNames);
+    }
+    setStep('input');
   };
 
   const handleUpdatePlayer = (id: string, updates: Partial<Player>) => {
@@ -130,7 +157,7 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (confirm('Tem certeza? Isso apagará todos os dados atuais.')) {
+    if (confirm('Tem certeza? Isso apagará todos os dados e resetará o aplicativo.')) {
       setStep('input');
       setPlayers([]);
       setTeams([]);
@@ -160,13 +187,12 @@ const App: React.FC = () => {
     { id: 'Atacante', icon: '🚀', label: 'Ata' },
   ];
 
-  // Função auxiliar para cor do nível
   const getLevelColor = (level: number) => {
-    if (level >= 9) return 'text-purple-400'; // Craque
-    if (level >= 7) return 'text-green-400';  // Bom
-    if (level >= 5) return 'text-yellow-400'; // Médio
-    if (level >= 3) return 'text-orange-400'; // Regular
-    return 'text-red-400'; // Fraco
+    if (level >= 9) return 'text-purple-400';
+    if (level >= 7) return 'text-green-400';
+    if (level >= 5) return 'text-yellow-400';
+    if (level >= 3) return 'text-orange-400';
+    return 'text-red-400';
   };
 
   return (
@@ -245,10 +271,24 @@ const App: React.FC = () => {
         {/* STEP 2: CLASSIFY */}
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
-            <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex justify-between items-center sticky top-0 z-20 backdrop-blur-md">
-              <h2 className="text-lg md:text-xl font-bold text-white">Classificar ({players.length}/20)</h2>
-              <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-semibold flex items-center gap-1">
-                <i className="fa-solid fa-trash"></i> Limpar
+            
+            {/* CABEÇALHO DA TABELA - Com Botões Voltar e Limpar */}
+            <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <button 
+                  onClick={handleBackToInput}
+                  className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"
+                  title="Voltar para editar lista sem perder dados"
+                >
+                  <i className="fa-solid fa-arrow-left"></i> Voltar p/ Cadastro
+                </button>
+                <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">
+                  Classificar ({players.length}/20)
+                </h2>
+              </div>
+              
+              <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-semibold flex items-center gap-1 transition-colors">
+                <i className="fa-solid fa-trash"></i> Resetar Tudo
               </button>
             </div>
             
