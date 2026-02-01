@@ -21,7 +21,6 @@ export const db = {
     return data ? JSON.parse(data) : [];
   },
 
-  // ALTERAÇÃO: Agora retorna o Player criado
   addPlayer: (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>): Player => {
     const players = db.getAllPlayers();
     
@@ -37,8 +36,7 @@ export const db = {
     
     players.push(newPlayer);
     localStorage.setItem(DB_KEY, JSON.stringify(players));
-    
-    return newPlayer; // Retorna o objeto completo com ID e Código
+    return newPlayer;
   },
 
   updatePlayer: (id: string, updates: Partial<Omit<Player, 'id' | 'code'>>) => {
@@ -52,9 +50,11 @@ export const db = {
     localStorage.setItem(DB_KEY, JSON.stringify(updatedPlayers));
   },
 
+  // CORREÇÃO CRÍTICA: Garante que a lista filtrada é salva
   deletePlayer: (id: string) => {
-    const players = db.getAllPlayers().filter(p => p.id !== id);
-    localStorage.setItem(DB_KEY, JSON.stringify(players));
+    const players = db.getAllPlayers();
+    const newPlayers = players.filter(p => p.id !== id);
+    localStorage.setItem(DB_KEY, JSON.stringify(newPlayers));
   },
 
   findByName: (name: string): Player | undefined => {
