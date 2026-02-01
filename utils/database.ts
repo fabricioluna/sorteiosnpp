@@ -2,7 +2,6 @@ import { Player } from '../types';
 
 const DB_KEY = 'snpp_db_players';
 
-// Gera o próximo código sequencial (Ex: 001, 002...)
 const generateCode = (existingPlayers: Player[]): string => {
   const codes = existingPlayers
     .map(p => parseInt(p.code, 10))
@@ -22,8 +21,8 @@ export const db = {
     return data ? JSON.parse(data) : [];
   },
 
-  // FUNÇÃO DE CRIAÇÃO (Novo Jogador)
-  addPlayer: (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>) => {
+  // ALTERAÇÃO: Agora retorna o Player criado
+  addPlayer: (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>): Player => {
     const players = db.getAllPlayers();
     
     const newPlayer: Player = {
@@ -38,14 +37,14 @@ export const db = {
     
     players.push(newPlayer);
     localStorage.setItem(DB_KEY, JSON.stringify(players));
+    
+    return newPlayer; // Retorna o objeto completo com ID e Código
   },
 
-  // FUNÇÃO DE ATUALIZAÇÃO (Editar Existente)
   updatePlayer: (id: string, updates: Partial<Omit<Player, 'id' | 'code'>>) => {
     const players = db.getAllPlayers();
     const updatedPlayers = players.map(p => {
       if (p.id === id) {
-        // Mantém ID, Código, Cartões e Gols originais. Atualiza apenas o resto.
         return { ...p, ...updates };
       }
       return p;
