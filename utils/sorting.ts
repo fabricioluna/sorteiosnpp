@@ -1,5 +1,4 @@
-
-import { Player, Team, Position } from '../types';
+import { Player, Team } from '../types';
 
 /**
  * Standard Fisher-Yates shuffle to introduce randomness
@@ -14,24 +13,9 @@ const shuffle = <T>(array: T[]): T[] => {
 };
 
 /**
- * Balances teams respecting the "fill first teams" rule.
- * 1. Calculate how many players each team should have (5, 5, 5, remaining).
- * 2. Distribute players to keep strength balanced across teams that have slots.
+ * Balances teams respecting fixed players (Champions).
  */
 export const balanceTeams = (players: Player[]): Team[] => {
-  const count = players.length;
-  const shuffledPlayers = shuffle(players);
-  const sortedPlayers = shuffledPlayers.sort((a, b) => b.level - a.level);
-
-  // Define target sizes: [5, 5, 5, 5] if 20, [5, 5, 2, 0] if 12, etc.
-  const targetSizes = [0, 0, 0, 0];
-  let remaining = count;
-  for (let i = 0; i < 4; i++) {
-    const size = Math.min(5, remaining);
-    targetSizes[i] = size;
-    remaining -= size;
-  }
-
   const teams: Team[] = [
     { id: 1, name: 'Time 1', players: [], totalLevel: 0 },
     { id: 2, name: 'Time 2', players: [], totalLevel: 0 },
@@ -39,28 +23,41 @@ export const balanceTeams = (players: Player[]): Team[] => {
     { id: 4, name: 'Time 4', players: [], totalLevel: 0 },
   ];
 
-  // Distribute players using a modified snake draft that respects target sizes
-  let forward = true;
-  let teamIdx = 0;
+  // 1. Separate fixed players (Champions) from the pool
+  const fixedPlayers = players.filter(p => p.isFixedInTeam1);
+  const poolPlayers = players.filter(p => !p.isFixedInTeam1);
 
-  // For balancing, we iterate through the sorted players
-  // and assign them to teams that still have space
-  const playersToAssign = [...sortedPlayers];
+  // 2. Assign fixed players immediately to Team 1
+  if (fixedPlayers.length > 0) {
+    teams[0].players = [...fixedPlayers];
+    teams[0].totalLevel = fixedPlayers.reduce((sum, p) => sum + p.level, 0);
+    teams[0].name = "Time 1 (Atual Campeão)";
+  }
+
+  // 3. Prepare to distribute the pool players
+  const shuffledPool = shuffle(poolPlayers);
+  const sortedPool = shuffledPool.sort((a, b) => b.level - a.level);
+
+  // Define target sizes: 5 players per team
+  const targetSize = 5;
+
+  // 4. Distribute pool players using Greedy Balancing
+  // We only assign to teams that aren't full yet.
+  // If Team 1 has 5 champions, it will be skipped automatically.
   
-  // We use a simple greedy balancing approach here instead of strict snake
-  // to better handle varying team sizes while keeping force balanced.
+  const playersToAssign = [...sortedPool];
+  
   while (playersToAssign.length > 0) {
     const player = playersToAssign.shift()!;
     
     // Find teams that still have slots available
-    const availableTeamIndices = targetSizes
-      .map((size, idx) => teams[idx].players.length < size ? idx : -1)
+    const availableTeamIndices = teams
+      .map((t, idx) => t.players.length < targetSize ? idx : -1)
       .filter(idx => idx !== -1);
 
-    if (availableTeamIndices.length === 0) break;
+    if (availableTeamIndices.length === 0) break; // Should not happen if math is right
 
-    // Among available teams, pick the one with the lowest total level to balance
-    // If levels are equal, pick the one with the fewest players
+    // Among available teams, pick the one with the lowest total level
     let bestTeamIdx = availableTeamIndices[0];
     let minLevel = teams[bestTeamIdx].totalLevel;
 
@@ -69,6 +66,7 @@ export const balanceTeams = (players: Player[]): Team[] => {
         minLevel = teams[idx].totalLevel;
         bestTeamIdx = idx;
       } else if (teams[idx].totalLevel === minLevel) {
+        // Tie-breaker: fewest players
         if (teams[idx].players.length < teams[bestTeamIdx].players.length) {
           bestTeamIdx = idx;
         }
@@ -79,25 +77,35 @@ export const balanceTeams = (players: Player[]): Team[] => {
     teams[bestTeamIdx].totalLevel += player.level;
   }
 
-  // Positional refinement for full teams
+  // 5. Positional refinement (Only for non-fixed teams usually, but let's run generally)
+  // We avoid swapping players from Team 1 if they are fixed champions
   refinePositions(teams);
 
   return teams;
 };
 
 const refinePositions = (teams: Team[]) => {
-  // Only refine for teams that are full (5 players)
   const fullTeams = teams.filter(t => t.players.length === 5);
   
   for (let i = 0; i < fullTeams.length; i++) {
+    // Skip refinement for the Champion Team (assuming they shouldn't be touched)
+    // We detect this if any player in the team is fixed
+    if (fullTeams[i].players.some(p => p.isFixedInTeam1)) continue;
+
     const defenders = fullTeams[i].players.filter(p => p.position === 'Zagueiro');
+    
     if (defenders.length === 0) {
+      // Look for a donor team
       for (let j = 0; j < fullTeams.length; j++) {
         if (i === j) continue;
+        // Don't take from Champion Team
+        if (fullTeams[j].players.some(p => p.isFixedInTeam1)) continue;
+
         const otherDefenders = fullTeams[j].players.filter(p => p.position === 'Zagueiro');
+        
         if (otherDefenders.length >= 2) {
           for (const d of otherDefenders) {
-            // Find a swap partner of same level
+            // Find swap partner of same level
             const match = fullTeams[i].players.find(p => p.level === d.level && p.position !== 'Zagueiro');
             if (match) {
               const p1Index = fullTeams[i].players.findIndex(p => p.id === match.id);
