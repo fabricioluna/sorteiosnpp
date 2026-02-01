@@ -78,16 +78,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     setEditingId(null);
   };
 
-  // CORREÇÃO: Atualiza o estado visual imediatamente após deletar
+  // LÓGICA DE EXCLUSÃO CORRIGIDA
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir este jogador do cadastro?')) {
-      // 1. Remove do banco
+      // 1. Remove do Banco de Dados
       db.deletePlayer(id);
       
-      // 2. Remove da tela instantaneamente (sem esperar recarregar)
-      setPlayers(prev => prev.filter(p => p.id !== id));
+      // 2. Atualiza a interface removendo SOMENTE o ID clicado
+      setPlayers(currentPlayers => currentPlayers.filter(p => p.id !== id));
       
-      // 3. Se estiver editando este jogador, cancela a edição
+      // 3. Reseta edição se estiver editando o excluído
       if (editingId === id) {
         setEditingId(null);
       }
