@@ -15,17 +15,27 @@ const generateCode = (existingPlayers: Player[]): string => {
   return nextCode.toString().padStart(3, '0');
 };
 
+// Gera um ID único e à prova de falhas (Timestamp + Aleatório)
+const generateUniqueId = () => {
+  return `db-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
+};
+
 export const db = {
   getAllPlayers: (): Player[] => {
-    const data = localStorage.getItem(DB_KEY);
-    return data ? JSON.parse(data) : [];
+    try {
+      const data = localStorage.getItem(DB_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.error("Erro ao ler banco de dados", e);
+      return [];
+    }
   },
 
   addPlayer: (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>): Player => {
     const players = db.getAllPlayers();
     
     const newPlayer: Player = {
-      id: `db-${Date.now()}`,
+      id: generateUniqueId(), // ID CORRIGIDO AQUI
       code: generateCode(players),
       name: player.name,
       position: player.position,
@@ -50,9 +60,9 @@ export const db = {
     localStorage.setItem(DB_KEY, JSON.stringify(updatedPlayers));
   },
 
-  // CORREÇÃO CRÍTICA: Garante que a lista filtrada é salva
   deletePlayer: (id: string) => {
     const players = db.getAllPlayers();
+    // Filtra removendo apenas o ID específico
     const newPlayers = players.filter(p => p.id !== id);
     localStorage.setItem(DB_KEY, JSON.stringify(newPlayers));
   },
