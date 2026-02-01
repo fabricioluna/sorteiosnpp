@@ -185,7 +185,7 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="w-full py-8 flex flex-col items-center justify-center space-y-4 relative">
         
-        {/* BOTÃO ADMIN - Agora bem visível e com texto */}
+        {/* BOTÃO ADMIN - Bem visível */}
         <button 
           onClick={() => setCurrentView('admin')}
           className="absolute top-4 right-4 bg-slate-800 hover:bg-orange-600 text-orange-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg z-50"
@@ -439,14 +439,21 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="mt-12 text-center px-4 pb-8 flex flex-col gap-4 items-center">
+      {/* RODAPÉ RESTAURADO COM CRÉDITOS */}
+      <footer className="mt-12 text-center px-4 pb-8 flex flex-col gap-6 items-center">
         <button 
            onClick={() => setCurrentView('admin')}
            className="text-slate-600 hover:text-orange-500 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
         >
           <i className="fa-solid fa-lock"></i> Acesso Restrito (Admin)
         </button>
-        <p className="text-orange-500/50 font-black text-sm tracking-widest uppercase italic">O Show Não Pode Parar</p>
+        
+        <div className="inline-block relative group">
+          <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-blue-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
+          <p className="relative text-orange-500 font-black text-xl md:text-2xl tracking-tighter uppercase italic drop-shadow-[0_2px_10px_rgba(249,115,22,0.3)] animate-pulse-slow">
+            Desenvolvido por Fabrício Luna
+          </p>
+        </div>
       </footer>
     </div>
   );
