@@ -48,26 +48,26 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_match_date', matchDate);
   }, [players, step, teams, matchDate]);
 
-  // --- AUXILIAR: Extrair códigos já usados nos textos ---
-  const extractUsedCodes = (): string[] => {
+  // --- EXTRAÇÃO ROBUSTA DE CÓDIGOS EM USO ---
+  const extractUsedCodes = (): number[] => {
     const allText = championText + '\n' + rawText;
-    // Captura qualquer sequência numérica após uma cerquilha (#)
+    // Captura qualquer coisa que pareça um código (#001, #1, # 42)
     const matches = allText.match(/#\s*(\d+)/g);
     
     if (!matches) return [];
 
-    // Limpa: Remove o # e espaços, deixando apenas os números
-    return matches.map(m => m.replace(/[^0-9]/g, ''));
+    // Retorna array de NÚMEROS para comparação segura (ex: 1, 42, 100)
+    // Isso garante que #001 seja igual a #1
+    return matches.map(m => parseInt(m.replace(/[^0-9]/g, ''), 10));
   };
 
   // --- LÓGICA DE INSERÇÃO DO BANCO ---
   const handleSelectPlayerFromDb = (player: Player) => {
-    // Verificação de Segurança: Impede adicionar se o código já estiver no texto
+    // 1. Verificação Final: Se já estiver na lista, aborta
     const usedCodes = extractUsedCodes();
-    // Compara como número para evitar erros de "001" vs "1"
-    const isAlreadyUsed = usedCodes.some(c => parseInt(c) === parseInt(player.code));
-
-    if (isAlreadyUsed) return;
+    const playerCodeNum = parseInt(player.code, 10);
+    
+    if (usedCodes.includes(playerCodeNum)) return;
 
     const lineToAdd = `${player.name} #${player.code}\n`;
     
@@ -94,8 +94,20 @@ const App: React.FC = () => {
 
       let dbPlayer: Player | undefined;
 
-      if (extractedCode) dbPlayer = db.findByCode(extractedCode);
-      if (!dbPlayer) dbPlayer = db.findByName(cleanName);
+      if (extractedCode) {
+        // Tenta achar pelo código formatado (ex: "001")
+        // O banco armazena string, então comparamos string
+        // Para garantir, formatamos o código extraído para 3 dígitos se necessário, ou buscamos exato
+        const formattedCode = extractedCode.padStart(3, '0');
+        dbPlayer = db.findByCode(formattedCode);
+        
+        // Se não achou com padding, tenta exato (caso o banco tenha "1" em vez de "001")
+        if (!dbPlayer) dbPlayer = db.findByCode(extractedCode);
+      } 
+      
+      if (!dbPlayer) {
+        dbPlayer = db.findByName(cleanName);
+      }
       
       if (dbPlayer) {
         return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
@@ -251,12 +263,13 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white font-inter">
       
-      {/* MODAL DE SELEÇÃO DE JOGADORES (DO BANCO) */}
+      {/* MODAL DE SELEÇÃO DE JOGADORES */}
       {showPlayerSelector && (
         <PlayerSelectionModal 
           onClose={() => setShowPlayerSelector(null)} 
           onSelect={handleSelectPlayerFromDb}
-          usedCodes={extractUsedCodes()} // Passa códigos em uso
+          // Passa a lista atualizada de códigos em uso (Números)
+          usedCodes={extractUsedCodes()} 
         />
       )}
 
@@ -352,6 +365,9 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... (STEPS CLASSIFY E RESULTS - CÓDIGO MANTIDO IGUAL) ... */}
+        {/* MANTENHA O CÓDIGO EXISTENTE AQUI PARA CLASSIFY E RESULTS */}
+        
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
@@ -453,25 +469,38 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores (COM FILTRO CORRIGIDO)
+// 1. Modal de Seleção de Jogadores (COM CORREÇÃO DE DUPLICIDADE)
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
-  usedCodes: string[]; 
+  usedCodes: number[]; // Array de números para comparação segura
 }> = ({ onClose, onSelect, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
+  
+  // ESTADO LOCAL DE JOGADORES SELECIONADOS NA SESSÃO ATUAL (Feedback imediato)
+  const [sessionSelectedCodes, setSessionSelectedCodes] = useState<number[]>([]);
 
   useEffect(() => {
     setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
   }, []);
 
+  const handleSelect = (p: Player) => {
+    onSelect(p);
+    // Adiciona o código selecionado à lista local para sumir imediatamente
+    setSessionSelectedCodes(prev => [...prev, parseInt(p.code, 10)]);
+  };
+
   const filteredPlayers = players.filter(p => {
-    // CONVERTE PARA INTEIRO PARA COMPARAR ("001" == 1)
-    const isUsed = usedCodes.some(used => parseInt(used) === parseInt(p.code));
+    const pCodeNum = parseInt(p.code, 10);
     
-    if (isUsed) return false;
+    // 1. Esconde se já estiver no texto principal (props)
+    if (usedCodes.includes(pCodeNum)) return false;
     
+    // 2. Esconde se acabou de ser clicado (estado local)
+    if (sessionSelectedCodes.includes(pCodeNum)) return false;
+    
+    // 3. Filtro de busca
     return p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
   });
 
@@ -503,7 +532,7 @@ const PlayerSelectionModal: React.FC<{
               {filteredPlayers.map(p => (
                 <button 
                   key={p.id} 
-                  onClick={() => onSelect(p)}
+                  onClick={() => handleSelect(p)}
                   className="flex items-center gap-3 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-left group"
                 >
                   <span className="bg-slate-950 text-slate-400 font-mono text-xs px-1.5 py-0.5 rounded border border-slate-700">#{p.code}</span>
@@ -526,7 +555,7 @@ const PlayerSelectionModal: React.FC<{
   );
 };
 
-// 2. Linha de Cadastro Rápido
+// 2. Linha de Cadastro Rápido (Igual)
 const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
