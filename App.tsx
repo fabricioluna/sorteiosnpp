@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
-import StarRating from './components/StarRating';
+// Removido import do StarRating pois usaremos seletor numérico direto
 import logoSnpp from './logosnpp.png';
 
 const App: React.FC = () => {
@@ -77,7 +77,7 @@ const App: React.FC = () => {
         id: `champ-${idx}-${Date.now()}`,
         name,
         position: 'Meia' as Position,
-        level: 1, // Começa com 1 estrela por padrão
+        level: 10, // Campeões assumimos que são bons, ou padrão alto
         isFixedInTeam1: true
       }));
 
@@ -86,7 +86,7 @@ const App: React.FC = () => {
         id: `player-${idx}-${Date.now()}`,
         name,
         position: 'Meia' as Position,
-        level: 1
+        level: 5 // Padrão médio na escala 1-10
       }));
 
       finalPlayers = [...championObjs, ...challengerObjs];
@@ -111,15 +111,12 @@ const App: React.FC = () => {
         id: `player-${idx}-${Date.now()}`,
         name,
         position: 'Meia' as Position,
-        level: 1
+        level: 5 // Padrão médio na escala 1-10
       }));
     }
 
     setPlayers(finalPlayers);
     setStep('classify');
-    // Limpa inputs visuais para evitar confusão, mas mantém no state/localstorage se precisar voltar? 
-    // Melhor limpar apenas se quiser forçar o usuário a colar de novo se voltar. 
-    // Vamos manter por enquanto para UX de correção.
   };
 
   const handleUpdatePlayer = (id: string, updates: Partial<Player>) => {
@@ -147,7 +144,7 @@ const App: React.FC = () => {
     const text = teams
       .filter(t => t.players.length > 0)
       .map(t => {
-        const playerList = t.players.map(p => `• ${p.name} (${p.position})`).join('\n');
+        const playerList = t.players.map(p => `• ${p.name} (${p.position}) - Nvl ${p.level}`).join('\n');
         const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
         return `*${t.name}* ${forceInfo}\n${playerList}`;
       }).join('\n\n');
@@ -162,6 +159,15 @@ const App: React.FC = () => {
     { id: 'Meia', icon: '🎯', label: 'Meia' },
     { id: 'Atacante', icon: '🚀', label: 'Ata' },
   ];
+
+  // Função auxiliar para cor do nível
+  const getLevelColor = (level: number) => {
+    if (level >= 9) return 'text-purple-400'; // Craque
+    if (level >= 7) return 'text-green-400';  // Bom
+    if (level >= 5) return 'text-yellow-400'; // Médio
+    if (level >= 3) return 'text-orange-400'; // Regular
+    return 'text-red-400'; // Fraco
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white">
@@ -248,22 +254,22 @@ const App: React.FC = () => {
             
             <div className="divide-y divide-slate-800 max-h-[60vh] overflow-y-auto custom-scrollbar">
               {players.map((player) => (
-                <div key={player.id} className={`p-3 md:p-4 flex flex-col md:flex-row md:items-center gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
+                <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
                   
-                  {/* Nome do Jogador */}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
-                      <input
-                        type="text"
-                        value={player.name}
-                        onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })}
-                        className={`w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none truncate ${player.isFixedInTeam1 ? 'text-yellow-100' : 'text-white'}`}
-                      />
-                    </div>
+                  {/* Linha Superior: Nome e Campeão */}
+                  <div className="flex items-center gap-2">
+                    {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
+                    <input
+                      type="text"
+                      value={player.name}
+                      onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })}
+                      className={`w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none truncate ${player.isFixedInTeam1 ? 'text-yellow-100' : 'text-white'}`}
+                    />
                   </div>
                   
-                  <div className="flex justify-between items-center gap-4">
+                  {/* Linha Inferior: Posição e Nível (1-10) */}
+                  <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                    
                     {/* Botões de Posição */}
                     <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
                       {positions.map((pos) => (
@@ -278,11 +284,27 @@ const App: React.FC = () => {
                       ))}
                     </div>
 
-                    {/* Estrelas */}
-                    <div className="flex flex-col items-end md:items-center min-w-[100px]">
-                      <span className="text-[9px] uppercase text-slate-500 font-bold mb-0.5 tracking-wider">Nível</span>
-                      <StarRating rating={player.level} onChange={(val) => handleUpdatePlayer(player.id, { level: val })} />
+                    {/* SELETOR DE NÍVEL 1-10 */}
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-10)</span>
+                      <div className="grid grid-cols-10 md:grid-cols-10 gap-1">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                          <button
+                            key={num}
+                            onClick={() => handleUpdatePlayer(player.id, { level: num })}
+                            className={`
+                              w-7 h-8 md:w-8 md:h-8 rounded flex items-center justify-center font-bold text-sm transition-all
+                              ${player.level === num 
+                                ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-lg scale-110 z-10 ring-1 ring-orange-300' 
+                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-200'}
+                            `}
+                          >
+                            {num}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+
                   </div>
                 </div>
               ))}
@@ -314,7 +336,6 @@ const App: React.FC = () => {
               {teams.filter(t => t.players.length > 0).map((team, idx) => {
                 const headerColors = ['bg-blue-800', 'bg-orange-600', 'bg-slate-700', 'bg-yellow-600'];
                 const isFull = team.players.length === 5;
-                // Destaque visual para o Time 1 se for campeão
                 const isChampionTeam = team.id === 1 && team.name.includes("Campeão");
 
                 return (
@@ -339,10 +360,13 @@ const App: React.FC = () => {
                               </div>
                               <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
                             </div>
-                            <div className="flex gap-0.5">
-                              {Array.from({ length: 5 }).map((_, i) => (
-                                <i key={i} className={`fa-solid fa-star text-[10px] ${i < p.level ? 'text-orange-500' : 'text-slate-800'}`}></i>
-                              ))}
+                            
+                            {/* EXIBIÇÃO DO NÍVEL 1-10 */}
+                            <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                               <span className={`font-black text-sm ${getLevelColor(p.level)}`}>
+                                 {p.level}
+                               </span>
+                               <i className="fa-solid fa-bolt text-[10px] text-slate-600"></i>
                             </div>
                           </li>
                         ))}
