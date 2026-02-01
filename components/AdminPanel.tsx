@@ -11,12 +11,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [password, setPassword] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   
-  // Estado para NOVO Jogador (Formulário do Topo)
+  // Estado para NOVO Jogador
   const [newName, setNewName] = useState('');
   const [newPosition, setNewPosition] = useState<Position>('Meia');
   const [newLevel, setNewLevel] = useState(5);
 
-  // Estado para EDIÇÃO INLINE (Na própria lista)
+  // Estado para EDIÇÃO INLINE
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editPosition, setEditPosition] = useState<Position>('Meia');
@@ -39,7 +39,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
-  // --- CRIAR NOVO ---
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newName.trim()) return;
@@ -50,14 +49,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       level: newLevel
     });
 
-    // Limpa apenas o formulário de criação
     setNewName('');
     setNewPosition('Meia');
     setNewLevel(5);
     loadPlayers();
   };
 
-  // --- EDITAR INLINE ---
   const startEditing = (p: Player) => {
     setEditingId(p.id);
     setEditName(p.name);
@@ -81,10 +78,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     setEditingId(null);
   };
 
+  // CORREÇÃO: Atualiza o estado visual imediatamente após deletar
   const handleDelete = (id: string) => {
     if (confirm('Tem certeza que deseja excluir este jogador do cadastro?')) {
+      // 1. Remove do banco
       db.deletePlayer(id);
-      loadPlayers();
+      
+      // 2. Remove da tela instantaneamente (sem esperar recarregar)
+      setPlayers(prev => prev.filter(p => p.id !== id));
+      
+      // 3. Se estiver editando este jogador, cancela a edição
+      if (editingId === id) {
+        setEditingId(null);
+      }
     }
   };
 
@@ -92,7 +98,6 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     if (l >= 9) return 'text-purple-400';
     if (l >= 7) return 'text-green-400';
     if (l >= 5) return 'text-yellow-400';
-    if (l >= 3) return 'text-orange-400';
     return 'text-red-400';
   };
 
@@ -135,7 +140,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* FORMULÁRIO DE CADASTRO (Apenas Novos) */}
+      {/* FORMULÁRIO DE CADASTRO */}
       <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8 shadow-xl">
         <h3 className="text-green-500 font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
           <i className="fa-solid fa-user-plus"></i> Novo Cadastro
@@ -176,7 +181,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         </form>
       </div>
 
-      {/* LISTA DE JOGADORES (Com Edição Inline) */}
+      {/* LISTA DE JOGADORES */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
         <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
           <span className="font-bold text-slate-400 text-sm uppercase">Atletas Cadastrados ({players.length})</span>
@@ -185,14 +190,12 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           {players.map(p => (
             <div key={p.id} className={`p-4 flex items-center justify-between transition-colors group ${editingId === p.id ? 'bg-blue-900/20 border-l-2 border-blue-500' : 'hover:bg-slate-800/50'}`}>
               
-              {/* LADO ESQUERDO: INFO OU INPUTS */}
               <div className="flex items-center gap-4 flex-1 mr-4">
                 <div className="bg-slate-800 text-slate-400 px-2 py-1 rounded text-xs font-mono font-bold border border-slate-700 min-w-[3rem] text-center">
                   #{p.code}
                 </div>
 
                 {editingId === p.id ? (
-                  // MODO EDIÇÃO: Inputs aparecem aqui
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2 w-full animate-in fade-in">
                     <input 
                       value={editName} 
@@ -216,11 +219,9 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                         onChange={e => setEditLevel(Number(e.target.value))}
                         className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-white focus:outline-none w-16 text-center"
                         />
-                        <span className="text-xs text-blue-400 font-bold">Nível</span>
                     </div>
                   </div>
                 ) : (
-                  // MODO LEITURA: Texto normal
                   <div>
                     <div className="font-bold text-white text-lg">{p.name}</div>
                     <div className="text-xs text-slate-500 uppercase font-bold flex gap-2 items-center">
@@ -232,43 +233,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                 )}
               </div>
 
-              {/* LADO DIREITO: BOTÕES DE AÇÃO */}
               <div className="flex items-center gap-2">
                 {editingId === p.id ? (
-                  // Botões Salvar/Cancelar
                   <>
-                    <button 
-                      onClick={saveEditing} 
-                      className="p-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors shadow-lg" 
-                      title="Salvar Alterações"
-                    >
-                      <i className="fa-solid fa-check"></i>
-                    </button>
-                    <button 
-                      onClick={cancelEditing} 
-                      className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors" 
-                      title="Cancelar"
-                    >
-                      <i className="fa-solid fa-xmark"></i>
-                    </button>
+                    <button onClick={saveEditing} className="p-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors shadow-lg"><i className="fa-solid fa-check"></i></button>
+                    <button onClick={cancelEditing} className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"><i className="fa-solid fa-xmark"></i></button>
                   </>
                 ) : (
-                  // Botões Editar/Excluir
                   <>
-                    <button 
-                      onClick={() => startEditing(p)} 
-                      className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors" 
-                      title="Editar Jogador"
-                    >
-                      <i className="fa-solid fa-pen-to-square text-lg"></i>
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(p.id)} 
-                      className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" 
-                      title="Excluir Jogador"
-                    >
-                      <i className="fa-solid fa-trash"></i>
-                    </button>
+                    <button onClick={() => startEditing(p)} className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors"><i className="fa-solid fa-pen-to-square text-lg"></i></button>
+                    <button onClick={() => handleDelete(p.id)} className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors"><i className="fa-solid fa-trash"></i></button>
                   </>
                 )}
               </div>
