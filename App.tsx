@@ -57,11 +57,29 @@ const App: React.FC = () => {
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
     
-    // Busca Inteligente no DB
-    const getPlayerData = (name: string, isChamp: boolean) => {
-      const dbPlayer = db.findByName(name);
+    // LÓGICA DE IDENTIFICAÇÃO (Código > Nome)
+    const getPlayerData = (lineText: string, isChamp: boolean) => {
+      // 1. Tenta extrair o código #000
+      const codeMatch = lineText.match(/#(\d{3})/);
+      const extractedCode = codeMatch ? codeMatch[1] : null;
+
+      // 2. Limpa o nome (remove o código da string para não ficar "Nome #001" na tela)
+      const cleanName = lineText.replace(/#\d{3}/, '').trim();
+
+      let dbPlayer: Player | undefined;
+
+      if (extractedCode) {
+        // PRIORIDADE 1: Busca pelo código
+        dbPlayer = db.findByCode(extractedCode);
+      } 
+      
+      if (!dbPlayer) {
+        // PRIORIDADE 2: Busca pelo nome (se não achou código ou código não existe)
+        dbPlayer = db.findByName(cleanName);
+      }
       
       if (dbPlayer) {
+        // Jogador encontrado no Banco
         return {
           ...dbPlayer,
           id: `match-${Date.now()}-${Math.random()}`,
@@ -69,10 +87,11 @@ const App: React.FC = () => {
         };
       }
 
+      // Jogador NÃO encontrado (Temporário)
       return {
         id: `temp-${Date.now()}-${Math.random()}`,
-        code: '---',
-        name: name,
+        code: extractedCode || '---',
+        name: cleanName,
         position: 'Meia' as Position,
         level: isChamp ? 10 : 5,
         redCards: 0,
@@ -95,8 +114,8 @@ const App: React.FC = () => {
         if(!confirm(`Total de atletas: ${total}. Deseja continuar?`)) return;
       }
 
-      const championObjs = champions.map(name => getPlayerData(name, true));
-      const challengerObjs = challengers.slice(0, 15).map(name => getPlayerData(name, false));
+      const championObjs = champions.map(line => getPlayerData(line, true));
+      const challengerObjs = challengers.slice(0, 15).map(line => getPlayerData(line, false));
 
       finalPlayers = [...championObjs, ...challengerObjs];
 
@@ -107,7 +126,7 @@ const App: React.FC = () => {
       if (totalFound === 0) { alert("Nenhum nome inserido."); return; }
       if (totalFound > 20) alert(`Atenção: ${totalFound} nomes. Usando os primeiros 20.`);
       
-      finalPlayers = allNames.slice(0, 20).map(name => getPlayerData(name, false));
+      finalPlayers = allNames.slice(0, 20).map(line => getPlayerData(line, false));
     }
 
     setPlayers(finalPlayers);
@@ -185,7 +204,7 @@ const App: React.FC = () => {
       {/* Header */}
       <header className="w-full py-8 flex flex-col items-center justify-center space-y-4 relative">
         
-        {/* BOTÃO ADMIN - Bem visível */}
+        {/* BOTÃO ADMIN */}
         <button 
           onClick={() => setCurrentView('admin')}
           className="absolute top-4 right-4 bg-slate-800 hover:bg-orange-600 text-orange-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg z-50"
@@ -253,7 +272,7 @@ const App: React.FC = () => {
                 </label>
                 <textarea
                   className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20"
-                  placeholder="Cole aqui os 5 nomes..."
+                  placeholder="Cole aqui os 5 nomes... (ex: João #001)"
                   value={championText}
                   onChange={(e) => setChampionText(e.target.value)}
                 />
@@ -265,7 +284,7 @@ const App: React.FC = () => {
                 {useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}
               </label>
               <p className="text-xs text-slate-500 mb-2">
-                * Se o jogador já estiver cadastrado no Admin, a posição e nível serão carregados automaticamente.
+                * Para usar o cadastro, digite o nome ou "Nome #000" para forçar o código.
               </p>
               <textarea
                 className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700"
@@ -313,7 +332,7 @@ const App: React.FC = () => {
                   
                   <div className="flex items-center gap-2">
                     {player.code !== '---' && (
-                       <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                       <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
                          #{player.code}
                        </span>
                     )}
@@ -439,7 +458,6 @@ const App: React.FC = () => {
         )}
       </main>
 
-      {/* RODAPÉ RESTAURADO COM CRÉDITOS */}
       <footer className="mt-12 text-center px-4 pb-8 flex flex-col gap-6 items-center">
         <button 
            onClick={() => setCurrentView('admin')}
