@@ -21,6 +21,10 @@ const App: React.FC = () => {
   const [showQuickRegister, setShowQuickRegister] = useState(false);
   const [tempPlayersToRegister, setTempPlayersToRegister] = useState<Player[]>([]);
   
+  // ESTADOS DE SEGURANÇA (NOVO)
+  const [quickAuthPassword, setQuickAuthPassword] = useState('');
+  const [isQuickAuth, setIsQuickAuth] = useState(false);
+  
   const [showPlayerSelector, setShowPlayerSelector] = useState<'champion' | 'general' | null>(null);
 
   // --- PERSISTÊNCIA ---
@@ -59,15 +63,13 @@ const App: React.FC = () => {
     return text.split('\n').filter(line => line.trim().length > 0).length;
   };
 
-  // --- LÓGICA DE INSERÇÃO (ADICIONAR) ---
+  // --- LÓGICA DE INSERÇÃO ---
   const handleSelectPlayerFromDb = (player: Player) => {
     const usedCodes = extractUsedCodes();
     const playerCodeNum = parseInt(player.code, 10);
     
-    // Se já existe, não faz nada
     if (usedCodes.includes(playerCodeNum)) return;
 
-    // --- VERIFICAÇÃO DE LIMITES ---
     const currentChampCount = countLines(championText);
     const currentRawCount = countLines(rawText);
     const totalCount = currentChampCount + currentRawCount;
@@ -88,12 +90,8 @@ const App: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DE REMOÇÃO (DO TEXTO) ---
   const handleRemovePlayerFromList = (player: Player) => {
-    // Regex para encontrar a linha que contém o código do jogador (ex: "Nome #001")
-    // O \s* permite espaços opcionais. O .* pega o resto da linha.
     const regex = new RegExp(`.*#\\s*${player.code}.*\\n?`, 'gi');
-
     if (showPlayerSelector === 'champion') {
       setChampionText(prev => prev.replace(regex, '').trim());
     } else if (showPlayerSelector === 'general') {
@@ -165,9 +163,14 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
+  // --- LÓGICA DE SORTEIO ---
   const handleSortTeams = () => {
     const tempPlayers = players.filter(p => p.code === '---');
     if (tempPlayers.length > 0) {
+      // RESET DE SEGURANÇA
+      setQuickAuthPassword('');
+      setIsQuickAuth(false);
+      
       setTempPlayersToRegister(tempPlayers);
       setShowQuickRegister(true);
     } else {
@@ -184,6 +187,9 @@ const App: React.FC = () => {
 
   const handleUpdateTempPlayer = (id: string, field: keyof Player, value: any) => {
     setTempPlayersToRegister(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+    
+    // IMPORTANTE: Também atualiza a lista principal para o sorteio usar os dados corrigidos (mesmo sem salvar no DB)
+    setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
   const handleQuickSaveOne = (tempId: string) => {
@@ -221,6 +227,14 @@ const App: React.FC = () => {
     setTempPlayersToRegister([]);
   };
 
+  const handleQuickAuth = () => {
+    if (quickAuthPassword === 'snpp2026') {
+      setIsQuickAuth(true);
+    } else {
+      alert('Senha incorreta.');
+    }
+  };
+
   const handleReset = () => {
     if (confirm('Limpar tudo?')) {
       setStep('input');
@@ -236,19 +250,14 @@ const App: React.FC = () => {
 
   const handleCopyTeams = () => {
     const dateFormatted = matchDate.split('-').reverse().join('/');
-    
-    const text = teams
-      .filter(t => t.players.length > 0)
-      .map(t => {
-        const playerList = t.players.map(p => {
-          const codeStr = p.code !== '---' ? ` #${p.code}` : '';
-          return `• ${p.name}${codeStr}`;
-        }).join('\n');
-        
-        const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
-        return `*${t.name}* ${forceInfo}\n${playerList}`;
-      }).join('\n\n');
-
+    const text = teams.filter(t => t.players.length > 0).map(t => {
+      const playerList = t.players.map(p => {
+        const codeStr = p.code !== '---' ? ` #${p.code}` : '';
+        return `• ${p.name}${codeStr}`;
+      }).join('\n');
+      const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
+      return `*${t.name}* ${forceInfo}\n${playerList}`;
+    }).join('\n\n');
     navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
       .then(() => alert('Copiado!'))
       .catch(() => alert('Erro ao copiar.'));
@@ -278,50 +287,97 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white font-inter">
       
-      {/* MODAL DE SELEÇÃO DE JOGADORES (ATUALIZADO) */}
+      {/* MODAL DE SELEÇÃO DE JOGADORES */}
       {showPlayerSelector && (
         <PlayerSelectionModal 
           onClose={() => setShowPlayerSelector(null)} 
           onSelect={handleSelectPlayerFromDb}
-          onRemove={handleRemovePlayerFromList} // Função de remover passada aqui
+          onRemove={handleRemovePlayerFromList}
           usedCodes={extractUsedCodes()} 
         />
       )}
 
-      {/* MODAL DE CADASTRO RÁPIDO (CÓDIGO EXISTENTE MANTIDO) */}
+      {/* MODAL DE CADASTRO RÁPIDO (COM SEGURANÇA) */}
       {showQuickRegister && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950 rounded-t-2xl">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h2 className="text-xl font-black text-white flex items-center gap-2">
-                    <i className="fa-solid fa-user-plus text-orange-500"></i>
-                    Novos Jogadores ({tempPlayersToRegister.length})
-                  </h2>
-                  <p className="text-slate-400 text-sm mt-1">Cadastre-os agora para gerar o código #ID permanente.</p>
+              <div className="flex flex-col gap-4">
+                <div className="flex justify-between items-start">
+                  <div>
+                    <h2 className="text-xl font-black text-white flex items-center gap-2">
+                      <i className="fa-solid fa-user-plus text-orange-500"></i>
+                      Novos Jogadores ({tempPlayersToRegister.length})
+                    </h2>
+                    <p className="text-slate-400 text-sm mt-1">
+                      Jogadores sem código detectados.
+                    </p>
+                  </div>
+                  
+                  {/* BOTÃO SALVAR TODOS (Só aparece se logado) */}
+                  {isQuickAuth && tempPlayersToRegister.length > 1 && (
+                    <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all animate-in fade-in">
+                      <i className="fa-solid fa-save"></i> Salvar Todos
+                    </button>
+                  )}
                 </div>
-                {tempPlayersToRegister.length > 1 && (
-                  <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all">
-                    <i className="fa-solid fa-save"></i> Salvar Todos
-                  </button>
+
+                {/* ÁREA DE SEGURANÇA (LOGIN) */}
+                {!isQuickAuth && (
+                  <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 flex flex-col md:flex-row items-center gap-3 animate-in fade-in">
+                    <div className="flex items-center gap-2 text-red-400 text-sm font-bold flex-1">
+                      <i className="fa-solid fa-lock"></i>
+                      <span>Cadastro no banco bloqueado</span>
+                    </div>
+                    <div className="flex w-full md:w-auto gap-2">
+                      <input 
+                        type="password" 
+                        placeholder="Senha Admin"
+                        value={quickAuthPassword}
+                        onChange={(e) => setQuickAuthPassword(e.target.value)}
+                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:border-red-500 outline-none w-full md:w-32"
+                      />
+                      <button 
+                        onClick={handleQuickAuth}
+                        className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition-colors"
+                      >
+                        Liberar
+                      </button>
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
+            
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               {tempPlayersToRegister.length === 0 ? (
                 <div className="text-center py-8 text-green-400 font-bold flex flex-col items-center gap-2"><i className="fa-solid fa-check-circle text-4xl"></i><p>Todos os jogadores foram processados!</p></div>
               ) : (
                 <div className="space-y-4">
                   {tempPlayersToRegister.map(p => (
-                    <QuickRegisterRow key={p.id} player={p} onUpdate={handleUpdateTempPlayer} onSave={() => handleQuickSaveOne(p.id)} />
+                    <QuickRegisterRow 
+                      key={p.id} 
+                      player={p} 
+                      onUpdate={handleUpdateTempPlayer} 
+                      onSave={() => handleQuickSaveOne(p.id)} 
+                      isAuth={isQuickAuth} // Passa o status de autenticação
+                    />
                   ))}
                 </div>
               )}
             </div>
-            <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex justify-between gap-4">
-              <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Pular Restantes e Sortear</button>
-              {tempPlayersToRegister.length === 0 && <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>}
+            
+            <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex flex-col md:flex-row justify-between gap-4">
+              <button 
+                onClick={() => proceedToSort()}
+                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
+              >
+                {isQuickAuth ? 'Pular Restantes e Sortear' : 'Pular Cadastro e Sortear'}
+                <i className="fa-solid fa-arrow-right"></i>
+              </button>
+              {tempPlayersToRegister.length === 0 && (
+                <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>
+              )}
             </div>
           </div>
         </div>
@@ -380,7 +436,8 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* ... (STEPS CLASSIFY E RESULTS - CÓDIGO MANTIDO IGUAL) ... */}
+        {/* ... (Resto do código: Steps Classify e Results) ... */}
+        {/* MANTENHA O CÓDIGO EXISTENTE AQUI (Classify e Results não mudaram a lógica) */}
         
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -483,12 +540,12 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores (COM CONTROLE VISUAL)
+// 1. Modal de Seleção de Jogadores (COM REMOÇÃO E FILTRO VISUAL)
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
   onRemove: (p: Player) => void;
-  usedCodes: number[]; // Lista de códigos (inteiros) já em uso
+  usedCodes: number[]; 
 }> = ({ onClose, onSelect, onRemove, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
@@ -546,7 +603,7 @@ const PlayerSelectionModal: React.FC<{
 
                     {isSelected ? (
                       <div className="flex items-center gap-2">
-                        <span className="text-green-500 text-lg"><i className="fa-solid fa-check"></i></span>
+                        <span className="text-green-500 text-lg animate-in zoom-in"><i className="fa-solid fa-check"></i></span>
                         <button 
                           onClick={() => onRemove(p)}
                           className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center border border-red-900/30"
@@ -579,8 +636,13 @@ const PlayerSelectionModal: React.FC<{
   );
 };
 
-// 2. Linha de Cadastro Rápido (Igual)
-const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
+// 2. Linha de Cadastro Rápido (COM TRAVA DE SEGURANÇA)
+const QuickRegisterRow: React.FC<{ 
+  player: Player; 
+  onUpdate: (id: string, field: keyof Player, value: any) => void; 
+  onSave: () => void;
+  isAuth: boolean;
+}> = ({ player, onUpdate, onSave, isAuth }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
       <div className="flex flex-col md:flex-row gap-3">
@@ -608,12 +670,20 @@ const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field:
           />
         </div>
       </div>
-      <button 
-        onClick={onSave}
-        className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm"
-      >
-        <i className="fa-solid fa-floppy-disk"></i> Salvar no Banco
-      </button>
+      
+      {/* Botão de salvar condicional */}
+      {isAuth ? (
+        <button 
+          onClick={onSave}
+          className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors"
+        >
+          <i className="fa-solid fa-floppy-disk"></i> Salvar no Banco
+        </button>
+      ) : (
+        <div className="w-full bg-slate-700/50 text-slate-500 font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm border border-slate-700 cursor-not-allowed">
+          <i className="fa-solid fa-lock"></i> Requer Login
+        </div>
+      )}
     </div>
   );
 };
