@@ -158,6 +158,11 @@ const App: React.FC = () => {
       localStorage.removeItem('snpp_players');
       localStorage.removeItem('snpp_step');
       localStorage.removeItem('snpp_teams');
+      // Opcional: Limpar também os inputs de texto se desejar "iniciar do zero" total
+      setRawText('');
+      setChampionText('');
+      localStorage.removeItem('snpp_use_champ');
+      localStorage.removeItem('snpp_champ_text');
     }
   };
 
@@ -165,10 +170,7 @@ const App: React.FC = () => {
     const text = teams
       .filter(t => t.players.length > 0)
       .map(t => {
-        // ALTERAÇÃO AQUI: Removido o nível individual da cópia
         const playerList = t.players.map(p => `• ${p.name} (${p.position})`).join('\n');
-        
-        // Mantive a força total do time para conferência, se quiser tirar isso também me avise
         const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
         return `*${t.name}* ${forceInfo}\n${playerList}`;
       }).join('\n\n');
@@ -213,9 +215,20 @@ const App: React.FC = () => {
         {/* STEP 1: INPUT */}
         {step === 'input' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl p-6 border border-slate-800 animate-in fade-in zoom-in duration-300">
-            <h2 className="text-xl font-bold mb-6 flex items-center gap-2 text-orange-500">
-              <i className="fa-solid fa-paste"></i> Importar Lista
-            </h2>
+            
+            {/* CABEÇALHO DO CARD DE INPUT COM RESET */}
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold flex items-center gap-2 text-orange-500">
+                <i className="fa-solid fa-paste"></i> Importar Lista
+              </h2>
+              <button 
+                onClick={handleReset} 
+                className="text-slate-500 hover:text-red-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-colors"
+                title="Limpar todos os dados e começar do zero"
+              >
+                <i className="fa-solid fa-trash"></i> Limpar Tudo
+              </button>
+            </div>
 
             {/* CHECKBOX: TIME CAMPEÃO */}
             <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center gap-4 cursor-pointer hover:border-orange-500/50 transition-colors" onClick={() => setUseChampionMode(!useChampionMode)}>
@@ -269,22 +282,22 @@ const App: React.FC = () => {
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             
-            {/* CABEÇALHO DA TABELA */}
+            {/* CABEÇALHO DA TABELA - Com Botões Voltar e Limpar */}
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
               <div className="flex items-center gap-4 w-full md:w-auto">
                 <button 
                   onClick={handleBackToInput}
                   className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"
                 >
-                  <i className="fa-solid fa-arrow-left"></i> Voltar p/ Cadastro
+                  <i className="fa-solid fa-arrow-left"></i> Voltar
                 </button>
                 <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">
                   Classificar ({players.length}/20)
                 </h2>
               </div>
               
-              <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-semibold flex items-center gap-1 transition-colors">
-                <i className="fa-solid fa-trash"></i> Resetar Tudo
+              <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-bold uppercase tracking-wider flex items-center gap-1 transition-colors">
+                <i className="fa-solid fa-trash"></i> Limpar Tudo
               </button>
             </div>
             
@@ -358,11 +371,30 @@ const App: React.FC = () => {
         {/* STEP 3: RESULTS */}
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800">
-               <div>
-                  <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
+            
+            {/* CABEÇALHO DO RESULTADO - Agora com Reset */}
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
+               <button 
+                  onClick={handleReset} 
+                  className="absolute top-4 right-4 text-slate-600 hover:text-red-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-colors md:hidden"
+               >
+                  <i className="fa-solid fa-trash"></i>
+               </button>
+
+               <div className="w-full md:w-auto">
+                  <div className="flex justify-between items-start">
+                    <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
+                    <button 
+                      onClick={handleReset} 
+                      className="hidden md:flex text-slate-600 hover:text-red-400 text-xs font-bold uppercase tracking-widest items-center gap-1 transition-colors ml-4"
+                      title="Limpar e Reiniciar"
+                    >
+                        <i className="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
                   <p className="text-slate-400 text-sm">Prontos para o jogo.</p>
                </div>
+
                <button onClick={handleCopyTeams} className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2">
                  <i className="fa-brands fa-whatsapp"></i> Copiar Resultado
                </button>
