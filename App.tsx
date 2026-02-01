@@ -21,7 +21,6 @@ const App: React.FC = () => {
   const [showQuickRegister, setShowQuickRegister] = useState(false);
   const [tempPlayersToRegister, setTempPlayersToRegister] = useState<Player[]>([]);
   
-  // Novo estado para seleção de jogadores do banco
   const [showPlayerSelector, setShowPlayerSelector] = useState<'champion' | 'general' | null>(null);
 
   // --- PERSISTÊNCIA ---
@@ -49,6 +48,14 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_match_date', matchDate);
   }, [players, step, teams, matchDate]);
 
+  // --- AUXILIAR: Extrair códigos já usados nos textos ---
+  const extractUsedCodes = (): string[] => {
+    const allText = championText + '\n' + rawText;
+    const matches = allText.match(/#\s*(\d{3})/g);
+    // Retorna array de códigos limpos (ex: ["001", "042"])
+    return matches ? matches.map(m => m.replace(/#\s*/, '')) : [];
+  };
+
   // --- LÓGICA DE INSERÇÃO DO BANCO ---
   const handleSelectPlayerFromDb = (player: Player) => {
     const lineToAdd = `${player.name} #${player.code}\n`;
@@ -58,8 +65,7 @@ const App: React.FC = () => {
     } else if (showPlayerSelector === 'general') {
       setRawText(prev => prev + lineToAdd);
     }
-    // Não fecha o modal automaticamente para permitir selecionar vários
-    // setShowPlayerSelector(null); 
+    // O modal permanece aberto, mas o jogador selecionado sumirá da lista automaticamente
   };
 
   const cleanNames = (text: string) => {
@@ -139,7 +145,6 @@ const App: React.FC = () => {
     setShowQuickRegister(false);
   };
 
-  // --- QUICK REGISTER LOGIC ---
   const handleUpdateTempPlayer = (id: string, field: keyof Player, value: any) => {
     setTempPlayersToRegister(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
@@ -235,7 +240,8 @@ const App: React.FC = () => {
       {showPlayerSelector && (
         <PlayerSelectionModal 
           onClose={() => setShowPlayerSelector(null)} 
-          onSelect={handleSelectPlayerFromDb} 
+          onSelect={handleSelectPlayerFromDb}
+          usedCodes={extractUsedCodes()} // Passa os códigos já em uso
         />
       )}
 
@@ -331,9 +337,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* ... (Resto do código igual: STEP classify e results) ... */}
-        {/* Como o código é longo, vou manter as partes abaixo que não mudaram para garantir integridade, mas compactadas onde possível */}
-        
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
@@ -435,20 +438,26 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores
-const PlayerSelectionModal: React.FC<{ onClose: () => void; onSelect: (p: Player) => void }> = ({ onClose, onSelect }) => {
+// 1. Modal de Seleção de Jogadores (ATUALIZADO)
+const PlayerSelectionModal: React.FC<{ 
+  onClose: () => void; 
+  onSelect: (p: Player) => void;
+  usedCodes: string[]; // Novo prop
+}> = ({ onClose, onSelect, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
 
   useEffect(() => {
-    // Carrega e ordena
     setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
   }, []);
 
-  const filteredPlayers = players.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) || 
-    p.code.includes(search)
-  );
+  const filteredPlayers = players.filter(p => {
+    // Exclui se o código já estiver na lista de usados
+    if (usedCodes.includes(p.code)) return false;
+    
+    // Filtro de busca
+    return p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
+  });
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
@@ -472,7 +481,7 @@ const PlayerSelectionModal: React.FC<{ onClose: () => void; onSelect: (p: Player
 
         <div className="overflow-y-auto custom-scrollbar flex-1 p-2">
           {filteredPlayers.length === 0 ? (
-            <p className="text-center text-slate-500 py-4">Nenhum jogador encontrado.</p>
+            <p className="text-center text-slate-500 py-4">Nenhum jogador disponível.</p>
           ) : (
             <div className="grid grid-cols-1 gap-2">
               {filteredPlayers.map(p => (
@@ -501,7 +510,7 @@ const PlayerSelectionModal: React.FC<{ onClose: () => void; onSelect: (p: Player
   );
 };
 
-// 2. Linha de Cadastro Rápido
+// 2. Linha de Cadastro Rápido (Igual)
 const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
