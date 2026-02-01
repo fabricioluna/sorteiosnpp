@@ -1,12 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
+import { db } from './utils/database'; // Importando o DB
 import logoSnpp from './logosnpp.png';
+import AdminPanel from './components/AdminPanel'; // Importando o Painel Admin
 
 const App: React.FC = () => {
+  // Roteamento Simples
+  const [currentView, setCurrentView] = useState<'sorteio' | 'admin'>('sorteio');
+
+  // Estado Sorteio
   const [step, setStep] = useState<AppStep>('input');
+  const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]); // Data da Pelada
   
-  // Estado para os inputs
   const [useChampionMode, setUseChampionMode] = useState(false);
   const [championText, setChampionText] = useState('');
   const [rawText, setRawText] = useState('');
@@ -14,13 +20,12 @@ const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
 
-  // --- PERSISTÊNCIA (LocalStorage) ---
+  // --- PERSISTÊNCIA ---
   useEffect(() => {
     const savedPlayers = localStorage.getItem('snpp_players');
     const savedStep = localStorage.getItem('snpp_step');
     const savedTeams = localStorage.getItem('snpp_teams');
-    const savedChampMode = localStorage.getItem('snpp_use_champ');
-    const savedChampText = localStorage.getItem('snpp_champ_text');
+    const savedMatchDate = localStorage.getItem('snpp_match_date');
 
     if (savedPlayers) {
       const parsed = JSON.parse(savedPlayers);
@@ -30,19 +35,16 @@ const App: React.FC = () => {
     if (savedStep && savedPlayers && JSON.parse(savedPlayers).length > 0) {
       setStep(savedStep as AppStep);
     }
-    if (savedChampMode) setUseChampionMode(JSON.parse(savedChampMode));
-    if (savedChampText) setChampionText(savedChampText);
+    if (savedMatchDate) setMatchDate(savedMatchDate);
   }, []);
 
   useEffect(() => {
     localStorage.setItem('snpp_players', JSON.stringify(players));
     localStorage.setItem('snpp_step', step);
     localStorage.setItem('snpp_teams', JSON.stringify(teams));
-    localStorage.setItem('snpp_use_champ', JSON.stringify(useChampionMode));
-    localStorage.setItem('snpp_champ_text', championText);
-  }, [players, step, teams, useChampionMode, championText]);
+    localStorage.setItem('snpp_match_date', matchDate);
+  }, [players, step, teams, matchDate]);
 
-  // Função auxiliar para limpar nomes
   const cleanNames = (text: string) => {
     return text.split('\n')
       .map(line => line
@@ -55,8 +57,31 @@ const App: React.FC = () => {
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
     
-    // MAPA DE JOGADORES EXISTENTES (Para preservar dados ao voltar)
-    const existingPlayersMap = new Map(players.map(p => [p.name.toLowerCase(), p]));
+    // TENTA ENCONTRAR NO BANCO DE DADOS PRIMEIRO
+    const getPlayerData = (name: string, isChamp: boolean) => {
+      const dbPlayer = db.findByName(name);
+      
+      // Se achou no banco, usa os dados do banco (Incluindo o código fixo)
+      if (dbPlayer) {
+        return {
+          ...dbPlayer,
+          id: `match-${Date.now()}-${Math.random()}`, // ID único para a partida
+          isFixedInTeam1: isChamp
+        };
+      }
+
+      // Se não achou, cria um temporário padrão
+      return {
+        id: `temp-${Date.now()}-${Math.random()}`,
+        code: '---',
+        name: name,
+        position: 'Meia' as Position,
+        level: isChamp ? 10 : 5,
+        redCards: 0,
+        goals: 0,
+        isFixedInTeam1: isChamp
+      };
+    };
 
     if (useChampionMode) {
       const champions = cleanNames(championText);
@@ -69,31 +94,11 @@ const App: React.FC = () => {
       
       const total = champions.length + challengers.length;
       if (total !== 20) {
-        const confirmProceed = confirm(`Total de atletas: ${total} (5 Campeões + ${challengers.length} Desafiantes). O ideal é 20. Deseja continuar?`);
-        if (!confirmProceed) return;
+        if(!confirm(`Total de atletas: ${total}. Deseja continuar?`)) return;
       }
 
-      const championObjs = champions.map((name, idx) => {
-        const existing = existingPlayersMap.get(name.toLowerCase());
-        return {
-          id: existing ? existing.id : `champ-${idx}-${Date.now()}`,
-          name: name,
-          position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 10,
-          isFixedInTeam1: true
-        };
-      });
-
-      const challengerObjs = challengers.slice(0, 15).map((name, idx) => {
-        const existing = existingPlayersMap.get(name.toLowerCase());
-        return {
-          id: existing ? existing.id : `player-${idx}-${Date.now()}`,
-          name: name,
-          position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 5,
-          isFixedInTeam1: false
-        };
-      });
+      const championObjs = champions.map(name => getPlayerData(name, true));
+      const challengerObjs = challengers.slice(0, 15).map(name => getPlayerData(name, false));
 
       finalPlayers = [...championObjs, ...challengerObjs];
 
@@ -101,43 +106,14 @@ const App: React.FC = () => {
       const allNames = cleanNames(rawText);
       const totalFound = allNames.length;
 
-      if (totalFound === 0) {
-        alert("Nenhum atleta identificado.");
-        return;
-      }
-
-      if (totalFound > 20) {
-        alert(`Atenção: ${totalFound} atletas encontrados. Usaremos os primeiros 20.`);
-      } else if (totalFound < 20) {
-         if(!confirm(`Apenas ${totalFound} atletas encontrados. Continuar?`)) return;
-      }
-
-      finalPlayers = allNames.slice(0, 20).map((name, idx) => {
-        const existing = existingPlayersMap.get(name.toLowerCase());
-        return {
-          id: existing ? existing.id : `player-${idx}-${Date.now()}`,
-          name: name,
-          position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 5
-        };
-      });
+      if (totalFound === 0) { alert("Nenhum nome inserido."); return; }
+      if (totalFound > 20) alert(`Atenção: ${totalFound} nomes. Usando os primeiros 20.`);
+      
+      finalPlayers = allNames.slice(0, 20).map(name => getPlayerData(name, false));
     }
 
     setPlayers(finalPlayers);
     setStep('classify');
-  };
-
-  const handleBackToInput = () => {
-    if (useChampionMode) {
-      const currentChampions = players.filter(p => p.isFixedInTeam1).map(p => p.name).join('\n');
-      const currentChallengers = players.filter(p => !p.isFixedInTeam1).map(p => p.name).join('\n');
-      setChampionText(currentChampions);
-      setRawText(currentChallengers);
-    } else {
-      const allNames = players.map(p => p.name).join('\n');
-      setRawText(allNames);
-    }
-    setStep('input');
   };
 
   const handleUpdatePlayer = (id: string, updates: Partial<Player>) => {
@@ -151,22 +127,22 @@ const App: React.FC = () => {
   };
 
   const handleReset = () => {
-    if (confirm('Tem certeza? Isso apagará todos os dados e resetará o aplicativo.')) {
+    if (confirm('Limpar o sorteio atual? (O Banco de Dados de jogadores permanecerá intacto)')) {
       setStep('input');
       setPlayers([]);
       setTeams([]);
       localStorage.removeItem('snpp_players');
       localStorage.removeItem('snpp_step');
       localStorage.removeItem('snpp_teams');
-      // Opcional: Limpar também os inputs de texto se desejar "iniciar do zero" total
       setRawText('');
       setChampionText('');
-      localStorage.removeItem('snpp_use_champ');
-      localStorage.removeItem('snpp_champ_text');
     }
   };
 
   const handleCopyTeams = () => {
+    // Formata a data para BR
+    const dateFormatted = matchDate.split('-').reverse().join('/');
+    
     const text = teams
       .filter(t => t.players.length > 0)
       .map(t => {
@@ -175,7 +151,7 @@ const App: React.FC = () => {
         return `*${t.name}* ${forceInfo}\n${playerList}`;
       }).join('\n\n');
 
-    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n\n${text}`)
+    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
       .then(() => alert('Copiado para o WhatsApp!'))
       .catch(() => alert('Erro ao copiar.'));
   };
@@ -194,15 +170,36 @@ const App: React.FC = () => {
     return 'text-red-400';
   };
 
+  // --- RENDERIZAÇÃO ---
+
+  if (currentView === 'admin') {
+    return (
+      <div className="min-h-screen bg-[#020617] text-gray-100 font-inter p-4">
+        <div className="max-w-4xl mx-auto">
+          <AdminPanel onBack={() => setCurrentView('sorteio')} />
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white">
+    <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white font-inter">
       
       {/* Header */}
-      <header className="w-full py-8 flex flex-col items-center justify-center space-y-4">
+      <header className="w-full py-8 flex flex-col items-center justify-center space-y-4 relative">
+        {/* Botão Admin no Canto */}
+        <button 
+          onClick={() => setCurrentView('admin')}
+          className="absolute top-4 right-4 text-slate-600 hover:text-orange-500 transition-colors p-2"
+          title="Acesso Administrativo"
+        >
+          <i className="fa-solid fa-gear text-xl"></i>
+        </button>
+
         <div className="w-32 h-32 md:w-40 md:h-40 relative drop-shadow-2xl hover:scale-105 transition-transform duration-300">
           <img src={logoSnpp} alt="Brasão SNPP" className="w-full h-full object-contain drop-shadow-lg" />
         </div>
-        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter text-white drop-shadow-md text-center px-4 font-inter">
+        <h1 className="text-3xl md:text-4xl font-black uppercase tracking-tighter text-white drop-shadow-md text-center px-4">
           O Show Não Pode Parar
         </h1>
         <p className="text-[10px] opacity-75 font-bold tracking-[0.2em] uppercase text-orange-500">
@@ -216,19 +213,30 @@ const App: React.FC = () => {
         {step === 'input' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl p-6 border border-slate-800 animate-in fade-in zoom-in duration-300">
             
-            {/* CABEÇALHO DO CARD DE INPUT COM RESET */}
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold flex items-center gap-2 text-orange-500">
-                <i className="fa-solid fa-paste"></i> Importar Lista
+                <i className="fa-solid fa-calendar-days"></i> Configuração da Partida
               </h2>
               <button 
                 onClick={handleReset} 
                 className="text-slate-500 hover:text-red-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-colors"
-                title="Limpar todos os dados e começar do zero"
               >
                 <i className="fa-solid fa-trash"></i> Limpar Tudo
               </button>
             </div>
+
+            {/* DATA DA PELADA */}
+            <div className="mb-6">
+              <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Data do Jogo</label>
+              <input 
+                type="date"
+                value={matchDate}
+                onChange={(e) => setMatchDate(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white focus:border-orange-500 outline-none font-bold"
+              />
+            </div>
+
+            <div className="border-t border-slate-800 my-6"></div>
 
             {/* CHECKBOX: TIME CAMPEÃO */}
             <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center gap-4 cursor-pointer hover:border-orange-500/50 transition-colors" onClick={() => setUseChampionMode(!useChampionMode)}>
@@ -248,7 +256,7 @@ const App: React.FC = () => {
                 </label>
                 <textarea
                   className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20"
-                  placeholder="Cole aqui os 5 nomes do time campeão..."
+                  placeholder="Cole aqui os 5 nomes..."
                   value={championText}
                   onChange={(e) => setChampionText(e.target.value)}
                 />
@@ -257,11 +265,14 @@ const App: React.FC = () => {
 
             <div className="mb-6">
               <label className="block text-sm font-bold text-slate-300 mb-2 uppercase tracking-wider">
-                {useChampionMode ? `Lista dos Desafiantes (15 Atletas)` : `Lista Completa (20 Atletas)`}
+                {useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}
               </label>
+              <p className="text-xs text-slate-500 mb-2">
+                * Se o jogador já estiver cadastrado no Admin, a posição e nível serão carregados automaticamente.
+              </p>
               <textarea
                 className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700"
-                placeholder={useChampionMode ? "Cole aqui os outros 15 jogadores..." : "Cole a lista completa com 20 jogadores..."}
+                placeholder={useChampionMode ? "Cole aqui os outros jogadores..." : "Cole a lista completa..."}
                 value={rawText}
                 onChange={(e) => setRawText(e.target.value)}
               />
@@ -282,20 +293,18 @@ const App: React.FC = () => {
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             
-            {/* CABEÇALHO DA TABELA - Com Botões Voltar e Limpar */}
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
               <div className="flex items-center gap-4 w-full md:w-auto">
                 <button 
-                  onClick={handleBackToInput}
+                  onClick={() => setStep('input')}
                   className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"
                 >
                   <i className="fa-solid fa-arrow-left"></i> Voltar
                 </button>
                 <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">
-                  Classificar ({players.length}/20)
+                  Conferência ({players.length})
                 </h2>
               </div>
-              
               <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-bold uppercase tracking-wider flex items-center gap-1 transition-colors">
                 <i className="fa-solid fa-trash"></i> Limpar Tudo
               </button>
@@ -305,9 +314,15 @@ const App: React.FC = () => {
               {players.map((player) => (
                 <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
                   
-                  {/* Linha Superior: Nome e Campeão */}
                   <div className="flex items-center gap-2">
+                    {/* Código (Se vier do DB) */}
+                    {player.code !== '---' && (
+                       <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
+                         #{player.code}
+                       </span>
+                    )}
                     {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
+                    
                     <input
                       type="text"
                       value={player.name}
@@ -316,10 +331,7 @@ const App: React.FC = () => {
                     />
                   </div>
                   
-                  {/* Linha Inferior: Posição e Nível */}
                   <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                    
-                    {/* Botões de Posição */}
                     <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
                       {positions.map((pos) => (
                         <button
@@ -333,7 +345,6 @@ const App: React.FC = () => {
                       ))}
                     </div>
 
-                    {/* SELETOR DE NÍVEL 1-10 */}
                     <div className="flex flex-col gap-1">
                       <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-10)</span>
                       <div className="grid grid-cols-10 md:grid-cols-10 gap-1">
@@ -341,19 +352,13 @@ const App: React.FC = () => {
                           <button
                             key={num}
                             onClick={() => handleUpdatePlayer(player.id, { level: num })}
-                            className={`
-                              w-7 h-8 md:w-8 md:h-8 rounded flex items-center justify-center font-bold text-sm transition-all
-                              ${player.level === num 
-                                ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-lg scale-110 z-10 ring-1 ring-orange-300' 
-                                : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-200'}
-                            `}
+                            className={`w-7 h-8 md:w-8 md:h-8 rounded flex items-center justify-center font-bold text-sm transition-all ${player.level === num ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-lg scale-110 z-10 ring-1 ring-orange-300' : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-200'}`}
                           >
                             {num}
                           </button>
                         ))}
                       </div>
                     </div>
-
                   </div>
                 </div>
               ))}
@@ -372,28 +377,16 @@ const App: React.FC = () => {
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* CABEÇALHO DO RESULTADO - Agora com Botões Visíveis */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
-               
-               {/* Lado Esquerdo: Títulos */}
                <div className="w-full md:w-auto text-center md:text-left">
                   <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
                   <p className="text-slate-400 text-sm">Prontos para o jogo.</p>
                </div>
-
-               {/* Lado Direito: Ações */}
                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
-                 <button 
-                  onClick={handleReset}
-                  className="px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-400/10 font-bold rounded-xl border border-red-400/30 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide"
-                 >
+                 <button onClick={handleReset} className="px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-400/10 font-bold rounded-xl border border-red-400/30 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide">
                    <i className="fa-solid fa-trash"></i> Limpar Tudo
                  </button>
-
-                 <button 
-                  onClick={handleCopyTeams}
-                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2"
-                 >
+                 <button onClick={handleCopyTeams} className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2">
                    <i className="fa-brands fa-whatsapp"></i> Copiar Resultado
                  </button>
                </div>
@@ -427,12 +420,8 @@ const App: React.FC = () => {
                               </div>
                               <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
                             </div>
-                            
-                            {/* EXIBIÇÃO DO NÍVEL (Apenas visual aqui, não copia) */}
                             <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800">
-                               <span className={`font-black text-sm ${getLevelColor(p.level)}`}>
-                                 {p.level}
-                               </span>
+                               <span className={`font-black text-sm ${getLevelColor(p.level)}`}>{p.level}</span>
                                <i className="fa-solid fa-bolt text-[10px] text-slate-600"></i>
                             </div>
                           </li>
@@ -457,12 +446,7 @@ const App: React.FC = () => {
       </main>
 
       <footer className="mt-12 text-center px-4 pb-8">
-        <div className="inline-block relative group">
-          <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-blue-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
-          <p className="relative text-orange-500 font-black text-xl md:text-2xl tracking-tighter uppercase italic drop-shadow-[0_2px_10px_rgba(249,115,22,0.3)] animate-pulse-slow">
-            Desenvolvido por Fabrício Luna
-          </p>
-        </div>
+        <p className="text-orange-500/50 font-black text-sm tracking-widest uppercase italic">O Show Não Pode Parar</p>
       </footer>
     </div>
   );
