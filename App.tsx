@@ -151,7 +151,7 @@ const App: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DE CÓPIA PARA WHATSAPP ATUALIZADA ---
+  // --- LÓGICA DE CÓPIA PARA WHATSAPP ATUALIZADA (SEM POSIÇÃO) ---
   const handleCopyTeams = () => {
     const dateFormatted = matchDate.split('-').reverse().join('/');
     
@@ -161,7 +161,8 @@ const App: React.FC = () => {
         const playerList = t.players.map(p => {
           // Adiciona o código se ele existir
           const codeStr = p.code !== '---' ? ` #${p.code}` : '';
-          return `• ${p.name}${codeStr} (${p.position})`;
+          // REMOVIDO: (${p.position})
+          return `• ${p.name}${codeStr}`;
         }).join('\n');
         
         const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
