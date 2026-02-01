@@ -21,10 +21,11 @@ const App: React.FC = () => {
   const [showQuickRegister, setShowQuickRegister] = useState(false);
   const [tempPlayersToRegister, setTempPlayersToRegister] = useState<Player[]>([]);
   
-  // ESTADOS DE SEGURANÇA (NOVO)
-  const [quickAuthPassword, setQuickAuthPassword] = useState('');
-  const [isQuickAuth, setIsQuickAuth] = useState(false);
-  
+  // NOVO: Estados para Verificação de Alterações
+  const [showUpdateAuth, setShowUpdateAuth] = useState(false);
+  const [modifiedPlayers, setModifiedPlayers] = useState<{current: Player, original: Player}[]>([]);
+  const [updateAuthPassword, setUpdateAuthPassword] = useState('');
+
   const [showPlayerSelector, setShowPlayerSelector] = useState<'champion' | 'general' | null>(null);
 
   // --- PERSISTÊNCIA ---
@@ -52,7 +53,7 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_match_date', matchDate);
   }, [players, step, teams, matchDate]);
 
-  // --- AUXILIAR: Extrair códigos já usados ---
+  // --- AUXILIAR ---
   const extractUsedCodes = (): number[] => {
     const allText = championText + '\n' + rawText;
     const matches = allText.match(/#\s*(\d+)/g);
@@ -163,51 +164,90 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
-  // --- LÓGICA DE SORTEIO ---
+  // --- SORTEIO: PASSO 1 (Verificar Convidados) ---
   const handleSortTeams = () => {
     const tempPlayers = players.filter(p => p.code === '---');
     if (tempPlayers.length > 0) {
-      // RESET DE SEGURANÇA
-      setQuickAuthPassword('');
-      setIsQuickAuth(false);
-      
       setTempPlayersToRegister(tempPlayers);
       setShowQuickRegister(true);
     } else {
-      proceedToSort();
+      checkForModifications();
     }
   };
 
-  const proceedToSort = () => {
+  // --- SORTEIO: PASSO 2 (Verificar Alterações no Cadastro) ---
+  const checkForModifications = () => {
+    const changes: {current: Player, original: Player}[] = [];
+    
+    players.forEach(p => {
+      // Pula convidados (código ---)
+      if (p.code === '---') return;
+
+      // Busca o original no banco pelo código
+      const original = db.findByCode(p.code);
+      
+      if (original) {
+        // Verifica se houve mudança em Nível ou Posição
+        if (original.level !== p.level || original.position !== p.position) {
+          changes.push({ current: p, original });
+        }
+      }
+    });
+
+    if (changes.length > 0) {
+      setModifiedPlayers(changes);
+      setUpdateAuthPassword('');
+      setShowUpdateAuth(true); // Abre o modal de senha
+    } else {
+      finalSort(); // Tudo ok, sorteia
+    }
+  };
+
+  // --- SORTEIO: PASSO 3 (Confirmação e Sorteio Final) ---
+  const confirmUpdatesAndSort = () => {
+    if (updateAuthPassword !== 'snpp2026') {
+      alert('Senha administrativa incorreta.');
+      return;
+    }
+
+    // Aplica as atualizações no banco de dados
+    modifiedPlayers.forEach(({ current, original }) => {
+      // Precisamos do ID original do banco (que está em 'original.id'), não do ID da partida
+      db.updatePlayer(original.id, {
+        level: current.level,
+        position: current.position
+      });
+    });
+
+    setShowUpdateAuth(false);
+    finalSort();
+  };
+
+  const skipUpdatesAndSort = () => {
+    if (confirm('Atenção: As alterações feitas NÃO serão salvas no cadastro para a próxima pelada. Deseja continuar apenas com o sorteio?')) {
+      setShowUpdateAuth(false);
+      finalSort();
+    }
+  };
+
+  const finalSort = () => {
     const result = balanceTeams(players);
     setTeams(result);
     setStep('results');
     setShowQuickRegister(false);
   };
 
+  // Funções Auxiliares de Cadastro
   const handleUpdateTempPlayer = (id: string, field: keyof Player, value: any) => {
     setTempPlayersToRegister(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
-    
-    // IMPORTANTE: Também atualiza a lista principal para o sorteio usar os dados corrigidos (mesmo sem salvar no DB)
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
   const handleQuickSaveOne = (tempId: string) => {
     const playerToSave = tempPlayersToRegister.find(p => p.id === tempId);
     if (!playerToSave) return;
-
-    const newDbPlayer = db.addPlayer({
-      name: playerToSave.name,
-      position: playerToSave.position,
-      level: playerToSave.level
-    });
-
-    setPlayers(prev => prev.map(p => {
-      if (p.id === tempId) {
-        return { ...newDbPlayer, id: p.id, isFixedInTeam1: p.isFixedInTeam1 };
-      }
-      return p;
-    }));
+    const newDbPlayer = db.addPlayer({ name: playerToSave.name, position: playerToSave.position, level: playerToSave.level });
+    setPlayers(prev => prev.map(p => p.id === tempId ? { ...newDbPlayer, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister(prev => prev.filter(p => p.id !== tempId));
   };
 
@@ -217,22 +257,8 @@ const App: React.FC = () => {
       const newDbPlayer = db.addPlayer({ name: p.name, position: p.position, level: p.level });
       updatesMap.set(p.id, newDbPlayer);
     });
-    setPlayers(prev => prev.map(p => {
-      if (updatesMap.has(p.id)) {
-        const dbP = updatesMap.get(p.id)!;
-        return { ...dbP, id: p.id, isFixedInTeam1: p.isFixedInTeam1 };
-      }
-      return p;
-    }));
+    setPlayers(prev => prev.map(p => updatesMap.has(p.id) ? { ...updatesMap.get(p.id)!, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister([]);
-  };
-
-  const handleQuickAuth = () => {
-    if (quickAuthPassword === 'snpp2026') {
-      setIsQuickAuth(true);
-    } else {
-      alert('Senha incorreta.');
-    }
   };
 
   const handleReset = () => {
@@ -258,9 +284,7 @@ const App: React.FC = () => {
       const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
       return `*${t.name}* ${forceInfo}\n${playerList}`;
     }).join('\n\n');
-    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
-      .then(() => alert('Copiado!'))
-      .catch(() => alert('Erro ao copiar.'));
+    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`).then(() => alert('Copiado!'));
   };
 
   const positions: { id: Position; icon: string; label: string }[] = [
@@ -297,87 +321,110 @@ const App: React.FC = () => {
         />
       )}
 
-      {/* MODAL DE CADASTRO RÁPIDO (COM SEGURANÇA) */}
+      {/* MODAL DE AUTENTICAÇÃO DE ATUALIZAÇÃO (NOVO) */}
+      {showUpdateAuth && (
+        <div className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+          <div className="bg-slate-900 border-2 border-red-500/50 rounded-2xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div className="bg-red-900/20 p-4 border-b border-red-900/30 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-red-500/20 flex items-center justify-center text-red-500">
+                <i className="fa-solid fa-triangle-exclamation text-xl"></i>
+              </div>
+              <div>
+                <h3 className="font-bold text-white text-lg">Alterações Detectadas</h3>
+                <p className="text-xs text-red-300">Dados do cadastro foram modificados.</p>
+              </div>
+            </div>
+
+            <div className="p-4 max-h-[40vh] overflow-y-auto custom-scrollbar">
+              <p className="text-slate-400 text-sm mb-3">
+                Os seguintes atletas tiveram nível ou posição alterados na lista. Deseja <strong>atualizar o cadastro oficial</strong>?
+              </p>
+              <div className="space-y-2">
+                {modifiedPlayers.map(({ current, original }, idx) => (
+                  <div key={idx} className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-sm">
+                    <div className="font-bold text-white mb-1 flex justify-between">
+                      {current.name} <span className="text-slate-500">#{current.code}</span>
+                    </div>
+                    <div className="flex gap-2 text-xs">
+                      {original.position !== current.position && (
+                        <span className="bg-slate-800 px-2 py-1 rounded text-slate-300">
+                          {original.position} <i className="fa-solid fa-arrow-right text-orange-500 mx-1"></i> <b className="text-white">{current.position}</b>
+                        </span>
+                      )}
+                      {original.level !== current.level && (
+                        <span className="bg-slate-800 px-2 py-1 rounded text-slate-300">
+                          Nível {original.level} <i className="fa-solid fa-arrow-right text-orange-500 mx-1"></i> <b className="text-white">{current.level}</b>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-4 bg-slate-950 border-t border-slate-800">
+              <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Senha de Administrador</label>
+              <input 
+                type="password"
+                autoFocus
+                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-white focus:border-red-500 outline-none mb-4"
+                placeholder="Digite a senha..."
+                value={updateAuthPassword}
+                onChange={(e) => setUpdateAuthPassword(e.target.value)}
+              />
+              <div className="flex flex-col gap-2">
+                <button 
+                  onClick={confirmUpdatesAndSort}
+                  className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl transition-colors shadow-lg"
+                >
+                  Confirmar Atualização e Sortear
+                </button>
+                <button 
+                  onClick={skipUpdatesAndSort}
+                  className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition-colors text-xs"
+                >
+                  Ignorar (Sortear sem salvar no banco)
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE CADASTRO RÁPIDO (Mantido) */}
       {showQuickRegister && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950 rounded-t-2xl">
-              <div className="flex flex-col gap-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <h2 className="text-xl font-black text-white flex items-center gap-2">
-                      <i className="fa-solid fa-user-plus text-orange-500"></i>
-                      Novos Jogadores ({tempPlayersToRegister.length})
-                    </h2>
-                    <p className="text-slate-400 text-sm mt-1">
-                      Jogadores sem código detectados.
-                    </p>
-                  </div>
-                  
-                  {/* BOTÃO SALVAR TODOS (Só aparece se logado) */}
-                  {isQuickAuth && tempPlayersToRegister.length > 1 && (
-                    <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all animate-in fade-in">
-                      <i className="fa-solid fa-save"></i> Salvar Todos
-                    </button>
-                  )}
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <i className="fa-solid fa-user-plus text-orange-500"></i>
+                    Novos Jogadores ({tempPlayersToRegister.length})
+                  </h2>
+                  <p className="text-slate-400 text-sm mt-1">Cadastre-os agora para gerar o código #ID permanente.</p>
                 </div>
-
-                {/* ÁREA DE SEGURANÇA (LOGIN) */}
-                {!isQuickAuth && (
-                  <div className="bg-red-900/20 border border-red-900/50 rounded-xl p-3 flex flex-col md:flex-row items-center gap-3 animate-in fade-in">
-                    <div className="flex items-center gap-2 text-red-400 text-sm font-bold flex-1">
-                      <i className="fa-solid fa-lock"></i>
-                      <span>Cadastro no banco bloqueado</span>
-                    </div>
-                    <div className="flex w-full md:w-auto gap-2">
-                      <input 
-                        type="password" 
-                        placeholder="Senha Admin"
-                        value={quickAuthPassword}
-                        onChange={(e) => setQuickAuthPassword(e.target.value)}
-                        className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-white text-sm focus:border-red-500 outline-none w-full md:w-32"
-                      />
-                      <button 
-                        onClick={handleQuickAuth}
-                        className="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition-colors"
-                      >
-                        Liberar
-                      </button>
-                    </div>
-                  </div>
+                {tempPlayersToRegister.length > 1 && (
+                  <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all">
+                    <i className="fa-solid fa-save"></i> Salvar Todos
+                  </button>
                 )}
               </div>
             </div>
-            
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               {tempPlayersToRegister.length === 0 ? (
                 <div className="text-center py-8 text-green-400 font-bold flex flex-col items-center gap-2"><i className="fa-solid fa-check-circle text-4xl"></i><p>Todos os jogadores foram processados!</p></div>
               ) : (
                 <div className="space-y-4">
                   {tempPlayersToRegister.map(p => (
-                    <QuickRegisterRow 
-                      key={p.id} 
-                      player={p} 
-                      onUpdate={handleUpdateTempPlayer} 
-                      onSave={() => handleQuickSaveOne(p.id)} 
-                      isAuth={isQuickAuth} // Passa o status de autenticação
-                    />
+                    <QuickRegisterRow key={p.id} player={p} onUpdate={handleUpdateTempPlayer} onSave={() => handleQuickSaveOne(p.id)} />
                   ))}
                 </div>
               )}
             </div>
-            
-            <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex flex-col md:flex-row justify-between gap-4">
-              <button 
-                onClick={() => proceedToSort()}
-                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2"
-              >
-                {isQuickAuth ? 'Pular Restantes e Sortear' : 'Pular Cadastro e Sortear'}
-                <i className="fa-solid fa-arrow-right"></i>
-              </button>
-              {tempPlayersToRegister.length === 0 && (
-                <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>
-              )}
+            <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex justify-between gap-4">
+              <button onClick={() => checkForModifications()} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Pular Restantes e Sortear</button>
+              {tempPlayersToRegister.length === 0 && <button onClick={() => checkForModifications()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>}
             </div>
           </div>
         </div>
@@ -436,9 +483,6 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* ... (Resto do código: Steps Classify e Results) ... */}
-        {/* MANTENHA O CÓDIGO EXISTENTE AQUI (Classify e Results não mudaram a lógica) */}
-        
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
@@ -480,6 +524,7 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... (STEP RESULTS - MANTIDO IGUAL) ... */}
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
@@ -540,7 +585,6 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores (COM REMOÇÃO E FILTRO VISUAL)
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
@@ -586,40 +630,23 @@ const PlayerSelectionModal: React.FC<{
             <div className="grid grid-cols-1 gap-2">
               {filteredPlayers.map(p => {
                 const isSelected = usedCodes.includes(parseInt(p.code, 10));
-                
                 return (
                   <div 
                     key={p.id} 
                     className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left border ${isSelected ? 'bg-green-900/10 border-green-900/30' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
                   >
-                    <span className={`font-mono text-xs px-1.5 py-0.5 rounded border ${isSelected ? 'bg-green-900 text-green-300 border-green-700' : 'bg-slate-950 text-slate-400 border-slate-700'}`}>
-                      #{p.code}
-                    </span>
-                    
+                    <span className={`font-mono text-xs px-1.5 py-0.5 rounded border ${isSelected ? 'bg-green-900 text-green-300 border-green-700' : 'bg-slate-950 text-slate-400 border-slate-700'}`}>#{p.code}</span>
                     <div className="flex-1">
                       <div className={`font-bold transition-colors ${isSelected ? 'text-green-400' : 'text-white'}`}>{p.name}</div>
                       <div className="text-xs text-slate-500">{p.position} • Nível {p.level}</div>
                     </div>
-
                     {isSelected ? (
                       <div className="flex items-center gap-2">
                         <span className="text-green-500 text-lg animate-in zoom-in"><i className="fa-solid fa-check"></i></span>
-                        <button 
-                          onClick={() => onRemove(p)}
-                          className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center border border-red-900/30"
-                          title="Remover da lista"
-                        >
-                          <i className="fa-solid fa-xmark"></i>
-                        </button>
+                        <button onClick={() => onRemove(p)} className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center border border-red-900/30" title="Remover"><i className="fa-solid fa-xmark"></i></button>
                       </div>
                     ) : (
-                      <button 
-                        onClick={() => onSelect(p)}
-                        className="w-8 h-8 rounded-lg bg-slate-700 text-slate-400 hover:bg-orange-500 hover:text-white transition-colors flex items-center justify-center"
-                        title="Adicionar"
-                      >
-                        <i className="fa-solid fa-plus"></i>
-                      </button>
+                      <button onClick={() => onSelect(p)} className="w-8 h-8 rounded-lg bg-slate-700 text-slate-400 hover:bg-orange-500 hover:text-white transition-colors flex items-center justify-center" title="Adicionar"><i className="fa-solid fa-plus"></i></button>
                     )}
                   </div>
                 );
@@ -627,7 +654,6 @@ const PlayerSelectionModal: React.FC<{
             </div>
           )}
         </div>
-        
         <div className="p-4 bg-slate-950 border-t border-slate-800 rounded-b-2xl text-center">
           <button onClick={onClose} className="text-sm text-slate-500 hover:text-white">Concluir Seleção</button>
         </div>
@@ -636,54 +662,17 @@ const PlayerSelectionModal: React.FC<{
   );
 };
 
-// 2. Linha de Cadastro Rápido (COM TRAVA DE SEGURANÇA)
-const QuickRegisterRow: React.FC<{ 
-  player: Player; 
-  onUpdate: (id: string, field: keyof Player, value: any) => void; 
-  onSave: () => void;
-  isAuth: boolean;
-}> = ({ player, onUpdate, onSave, isAuth }) => {
+const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
       <div className="flex flex-col md:flex-row gap-3">
-        <input 
-          value={player.name} 
-          onChange={(e) => onUpdate(player.id, 'name', e.target.value)} 
-          className="flex-1 bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"
-          placeholder="Nome do Jogador"
-        />
+        <input value={player.name} onChange={(e) => onUpdate(player.id, 'name', e.target.value)} className="flex-1 bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none" placeholder="Nome do Jogador" />
         <div className="flex gap-2">
-          <select 
-            value={player.position} 
-            onChange={(e) => onUpdate(player.id, 'position', e.target.value)} 
-            className="bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"
-          >
-            <option value="Zagueiro">Zagueiro</option>
-            <option value="Meia">Meia</option>
-            <option value="Atacante">Atacante</option>
-          </select>
-          <input 
-            type="number" min="1" max="10"
-            value={player.level} 
-            onChange={(e) => onUpdate(player.id, 'level', Number(e.target.value))} 
-            className="w-16 bg-slate-950 border border-slate-600 rounded-lg px-2 py-2 text-white focus:border-orange-500 outline-none text-center"
-          />
+          <select value={player.position} onChange={(e) => onUpdate(player.id, 'position', e.target.value)} className="bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"><option value="Zagueiro">Zagueiro</option><option value="Meia">Meia</option><option value="Atacante">Atacante</option></select>
+          <input type="number" min="1" max="10" value={player.level} onChange={(e) => onUpdate(player.id, 'level', Number(e.target.value))} className="w-16 bg-slate-950 border border-slate-600 rounded-lg px-2 py-2 text-white focus:border-orange-500 outline-none text-center" />
         </div>
       </div>
-      
-      {/* Botão de salvar condicional */}
-      {isAuth ? (
-        <button 
-          onClick={onSave}
-          className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm transition-colors"
-        >
-          <i className="fa-solid fa-floppy-disk"></i> Salvar no Banco
-        </button>
-      ) : (
-        <div className="w-full bg-slate-700/50 text-slate-500 font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm border border-slate-700 cursor-not-allowed">
-          <i className="fa-solid fa-lock"></i> Requer Login
-        </div>
-      )}
+      <button onClick={onSave} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm"><i className="fa-solid fa-floppy-disk"></i> Salvar no Banco</button>
     </div>
   );
 };
