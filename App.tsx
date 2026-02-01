@@ -1,17 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
-import { db } from './utils/database'; // Importando o DB
+import { db } from './utils/database';
 import logoSnpp from './logosnpp.png';
-import AdminPanel from './components/AdminPanel'; // Importando o Painel Admin
+import AdminPanel from './components/AdminPanel';
 
 const App: React.FC = () => {
-  // Roteamento Simples
+  // Roteamento
   const [currentView, setCurrentView] = useState<'sorteio' | 'admin'>('sorteio');
 
   // Estado Sorteio
   const [step, setStep] = useState<AppStep>('input');
-  const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]); // Data da Pelada
+  const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   
   const [useChampionMode, setUseChampionMode] = useState(false);
   const [championText, setChampionText] = useState('');
@@ -57,20 +57,18 @@ const App: React.FC = () => {
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
     
-    // TENTA ENCONTRAR NO BANCO DE DADOS PRIMEIRO
+    // Busca Inteligente no DB
     const getPlayerData = (name: string, isChamp: boolean) => {
       const dbPlayer = db.findByName(name);
       
-      // Se achou no banco, usa os dados do banco (Incluindo o código fixo)
       if (dbPlayer) {
         return {
           ...dbPlayer,
-          id: `match-${Date.now()}-${Math.random()}`, // ID único para a partida
+          id: `match-${Date.now()}-${Math.random()}`,
           isFixedInTeam1: isChamp
         };
       }
 
-      // Se não achou, cria um temporário padrão
       return {
         id: `temp-${Date.now()}-${Math.random()}`,
         code: '---',
@@ -140,7 +138,6 @@ const App: React.FC = () => {
   };
 
   const handleCopyTeams = () => {
-    // Formata a data para BR
     const dateFormatted = matchDate.split('-').reverse().join('/');
     
     const text = teams
@@ -187,13 +184,15 @@ const App: React.FC = () => {
       
       {/* Header */}
       <header className="w-full py-8 flex flex-col items-center justify-center space-y-4 relative">
-        {/* Botão Admin no Canto */}
+        
+        {/* BOTÃO ADMIN - Agora bem visível e com texto */}
         <button 
           onClick={() => setCurrentView('admin')}
-          className="absolute top-4 right-4 text-slate-600 hover:text-orange-500 transition-colors p-2"
+          className="absolute top-4 right-4 bg-slate-800 hover:bg-orange-600 text-orange-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg z-50"
           title="Acesso Administrativo"
         >
-          <i className="fa-solid fa-gear text-xl"></i>
+          <span className="text-xs font-bold uppercase tracking-widest">Admin</span>
+          <i className="fa-solid fa-gear"></i>
         </button>
 
         <div className="w-32 h-32 md:w-40 md:h-40 relative drop-shadow-2xl hover:scale-105 transition-transform duration-300">
@@ -225,7 +224,6 @@ const App: React.FC = () => {
               </button>
             </div>
 
-            {/* DATA DA PELADA */}
             <div className="mb-6">
               <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Data do Jogo</label>
               <input 
@@ -238,7 +236,6 @@ const App: React.FC = () => {
 
             <div className="border-t border-slate-800 my-6"></div>
 
-            {/* CHECKBOX: TIME CAMPEÃO */}
             <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center gap-4 cursor-pointer hover:border-orange-500/50 transition-colors" onClick={() => setUseChampionMode(!useChampionMode)}>
               <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${useChampionMode ? 'bg-orange-500 border-orange-500' : 'border-slate-600'}`}>
                 {useChampionMode && <i className="fa-solid fa-check text-white text-sm"></i>}
@@ -315,14 +312,12 @@ const App: React.FC = () => {
                 <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
                   
                   <div className="flex items-center gap-2">
-                    {/* Código (Se vier do DB) */}
                     {player.code !== '---' && (
                        <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded">
                          #{player.code}
                        </span>
                     )}
                     {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
-                    
                     <input
                       type="text"
                       value={player.name}
@@ -376,7 +371,6 @@ const App: React.FC = () => {
         {/* STEP 3: RESULTS */}
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-            
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
                <div className="w-full md:w-auto text-center md:text-left">
                   <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
@@ -445,7 +439,13 @@ const App: React.FC = () => {
         )}
       </main>
 
-      <footer className="mt-12 text-center px-4 pb-8">
+      <footer className="mt-12 text-center px-4 pb-8 flex flex-col gap-4 items-center">
+        <button 
+           onClick={() => setCurrentView('admin')}
+           className="text-slate-600 hover:text-orange-500 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"
+        >
+          <i className="fa-solid fa-lock"></i> Acesso Restrito (Admin)
+        </button>
         <p className="text-orange-500/50 font-black text-sm tracking-widest uppercase italic">O Show Não Pode Parar</p>
       </footer>
     </div>
