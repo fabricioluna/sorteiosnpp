@@ -48,33 +48,56 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_match_date', matchDate);
   }, [players, step, teams, matchDate]);
 
-  // --- EXTRAÇÃO ROBUSTA DE CÓDIGOS EM USO ---
+  // --- AUXILIAR: Extrair códigos já usados ---
   const extractUsedCodes = (): number[] => {
     const allText = championText + '\n' + rawText;
-    // Captura qualquer coisa que pareça um código (#001, #1, # 42)
     const matches = allText.match(/#\s*(\d+)/g);
-    
-    if (!matches) return [];
-
-    // Retorna array de NÚMEROS para comparação segura (ex: 1, 42, 100)
-    // Isso garante que #001 seja igual a #1
-    return matches.map(m => parseInt(m.replace(/[^0-9]/g, ''), 10));
+    return matches ? matches.map(m => parseInt(m.replace(/[^0-9]/g, ''), 10)) : [];
   };
 
-  // --- LÓGICA DE INSERÇÃO DO BANCO ---
+  const countLines = (text: string) => {
+    return text.split('\n').filter(line => line.trim().length > 0).length;
+  };
+
+  // --- LÓGICA DE INSERÇÃO (ADICIONAR) ---
   const handleSelectPlayerFromDb = (player: Player) => {
-    // 1. Verificação Final: Se já estiver na lista, aborta
     const usedCodes = extractUsedCodes();
     const playerCodeNum = parseInt(player.code, 10);
     
+    // Se já existe, não faz nada
     if (usedCodes.includes(playerCodeNum)) return;
 
-    const lineToAdd = `${player.name} #${player.code}\n`;
-    
+    // --- VERIFICAÇÃO DE LIMITES ---
+    const currentChampCount = countLines(championText);
+    const currentRawCount = countLines(rawText);
+    const totalCount = currentChampCount + currentRawCount;
+
+    if (totalCount >= 20) {
+      alert("A lista já atingiu o limite máximo de 20 atletas.");
+      return;
+    }
+
     if (showPlayerSelector === 'champion') {
-      setChampionText(prev => prev + lineToAdd);
+      if (currentChampCount >= 5) {
+        alert("O Time Campeão já tem 5 atletas.");
+        return;
+      }
+      setChampionText(prev => (prev.trim() + `\n${player.name} #${player.code}`).trim());
     } else if (showPlayerSelector === 'general') {
-      setRawText(prev => prev + lineToAdd);
+      setRawText(prev => (prev.trim() + `\n${player.name} #${player.code}`).trim());
+    }
+  };
+
+  // --- LÓGICA DE REMOÇÃO (DO TEXTO) ---
+  const handleRemovePlayerFromList = (player: Player) => {
+    // Regex para encontrar a linha que contém o código do jogador (ex: "Nome #001")
+    // O \s* permite espaços opcionais. O .* pega o resto da linha.
+    const regex = new RegExp(`.*#\\s*${player.code}.*\\n?`, 'gi');
+
+    if (showPlayerSelector === 'champion') {
+      setChampionText(prev => prev.replace(regex, '').trim());
+    } else if (showPlayerSelector === 'general') {
+      setRawText(prev => prev.replace(regex, '').trim());
     }
   };
 
@@ -95,19 +118,11 @@ const App: React.FC = () => {
       let dbPlayer: Player | undefined;
 
       if (extractedCode) {
-        // Tenta achar pelo código formatado (ex: "001")
-        // O banco armazena string, então comparamos string
-        // Para garantir, formatamos o código extraído para 3 dígitos se necessário, ou buscamos exato
         const formattedCode = extractedCode.padStart(3, '0');
         dbPlayer = db.findByCode(formattedCode);
-        
-        // Se não achou com padding, tenta exato (caso o banco tenha "1" em vez de "001")
         if (!dbPlayer) dbPlayer = db.findByCode(extractedCode);
       } 
-      
-      if (!dbPlayer) {
-        dbPlayer = db.findByName(cleanName);
-      }
+      if (!dbPlayer) dbPlayer = db.findByName(cleanName);
       
       if (dbPlayer) {
         return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
@@ -263,17 +278,17 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white font-inter">
       
-      {/* MODAL DE SELEÇÃO DE JOGADORES */}
+      {/* MODAL DE SELEÇÃO DE JOGADORES (ATUALIZADO) */}
       {showPlayerSelector && (
         <PlayerSelectionModal 
           onClose={() => setShowPlayerSelector(null)} 
           onSelect={handleSelectPlayerFromDb}
-          // Passa a lista atualizada de códigos em uso (Números)
+          onRemove={handleRemovePlayerFromList} // Função de remover passada aqui
           usedCodes={extractUsedCodes()} 
         />
       )}
 
-      {/* MODAL DE CADASTRO RÁPIDO */}
+      {/* MODAL DE CADASTRO RÁPIDO (CÓDIGO EXISTENTE MANTIDO) */}
       {showQuickRegister && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
@@ -366,7 +381,6 @@ const App: React.FC = () => {
         )}
 
         {/* ... (STEPS CLASSIFY E RESULTS - CÓDIGO MANTIDO IGUAL) ... */}
-        {/* MANTENHA O CÓDIGO EXISTENTE AQUI PARA CLASSIFY E RESULTS */}
         
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
@@ -469,40 +483,24 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores (COM CORREÇÃO DE DUPLICIDADE)
+// 1. Modal de Seleção de Jogadores (COM CONTROLE VISUAL)
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
-  usedCodes: number[]; // Array de números para comparação segura
-}> = ({ onClose, onSelect, usedCodes }) => {
+  onRemove: (p: Player) => void;
+  usedCodes: number[]; // Lista de códigos (inteiros) já em uso
+}> = ({ onClose, onSelect, onRemove, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
-  
-  // ESTADO LOCAL DE JOGADORES SELECIONADOS NA SESSÃO ATUAL (Feedback imediato)
-  const [sessionSelectedCodes, setSessionSelectedCodes] = useState<number[]>([]);
 
   useEffect(() => {
     setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
   }, []);
 
-  const handleSelect = (p: Player) => {
-    onSelect(p);
-    // Adiciona o código selecionado à lista local para sumir imediatamente
-    setSessionSelectedCodes(prev => [...prev, parseInt(p.code, 10)]);
-  };
-
-  const filteredPlayers = players.filter(p => {
-    const pCodeNum = parseInt(p.code, 10);
-    
-    // 1. Esconde se já estiver no texto principal (props)
-    if (usedCodes.includes(pCodeNum)) return false;
-    
-    // 2. Esconde se acabou de ser clicado (estado local)
-    if (sessionSelectedCodes.includes(pCodeNum)) return false;
-    
-    // 3. Filtro de busca
-    return p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
-  });
+  const filteredPlayers = players.filter(p => 
+    p.name.toLowerCase().includes(search.toLowerCase()) || 
+    p.code.includes(search)
+  );
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
@@ -526,29 +524,55 @@ const PlayerSelectionModal: React.FC<{
 
         <div className="overflow-y-auto custom-scrollbar flex-1 p-2">
           {filteredPlayers.length === 0 ? (
-            <p className="text-center text-slate-500 py-4">Nenhum jogador disponível.</p>
+            <p className="text-center text-slate-500 py-4">Nenhum jogador encontrado.</p>
           ) : (
             <div className="grid grid-cols-1 gap-2">
-              {filteredPlayers.map(p => (
-                <button 
-                  key={p.id} 
-                  onClick={() => handleSelect(p)}
-                  className="flex items-center gap-3 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-left group"
-                >
-                  <span className="bg-slate-950 text-slate-400 font-mono text-xs px-1.5 py-0.5 rounded border border-slate-700">#{p.code}</span>
-                  <div className="flex-1">
-                    <div className="font-bold text-white group-hover:text-orange-400 transition-colors">{p.name}</div>
-                    <div className="text-xs text-slate-500">{p.position} • Nível {p.level}</div>
+              {filteredPlayers.map(p => {
+                const isSelected = usedCodes.includes(parseInt(p.code, 10));
+                
+                return (
+                  <div 
+                    key={p.id} 
+                    className={`flex items-center gap-3 p-3 rounded-xl transition-colors text-left border ${isSelected ? 'bg-green-900/10 border-green-900/30' : 'bg-slate-800 border-slate-700 hover:bg-slate-700'}`}
+                  >
+                    <span className={`font-mono text-xs px-1.5 py-0.5 rounded border ${isSelected ? 'bg-green-900 text-green-300 border-green-700' : 'bg-slate-950 text-slate-400 border-slate-700'}`}>
+                      #{p.code}
+                    </span>
+                    
+                    <div className="flex-1">
+                      <div className={`font-bold transition-colors ${isSelected ? 'text-green-400' : 'text-white'}`}>{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.position} • Nível {p.level}</div>
+                    </div>
+
+                    {isSelected ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-500 text-lg"><i className="fa-solid fa-check"></i></span>
+                        <button 
+                          onClick={() => onRemove(p)}
+                          className="w-8 h-8 rounded-lg bg-red-900/20 text-red-500 hover:bg-red-500 hover:text-white transition-colors flex items-center justify-center border border-red-900/30"
+                          title="Remover da lista"
+                        >
+                          <i className="fa-solid fa-xmark"></i>
+                        </button>
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => onSelect(p)}
+                        className="w-8 h-8 rounded-lg bg-slate-700 text-slate-400 hover:bg-orange-500 hover:text-white transition-colors flex items-center justify-center"
+                        title="Adicionar"
+                      >
+                        <i className="fa-solid fa-plus"></i>
+                      </button>
+                    )}
                   </div>
-                  <i className="fa-solid fa-plus text-slate-600 group-hover:text-white"></i>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
         
         <div className="p-4 bg-slate-950 border-t border-slate-800 rounded-b-2xl text-center">
-          <button onClick={onClose} className="text-sm text-slate-500 hover:text-white">Fechar</button>
+          <button onClick={onClose} className="text-sm text-slate-500 hover:text-white">Concluir Seleção</button>
         </div>
       </div>
     </div>
