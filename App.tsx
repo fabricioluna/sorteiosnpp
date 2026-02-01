@@ -372,32 +372,31 @@ const App: React.FC = () => {
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             
-            {/* CABEÇALHO DO RESULTADO - Agora com Reset */}
+            {/* CABEÇALHO DO RESULTADO - Agora com Botões Visíveis */}
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
-               <button 
-                  onClick={handleReset} 
-                  className="absolute top-4 right-4 text-slate-600 hover:text-red-400 text-xs font-bold uppercase tracking-widest flex items-center gap-1 transition-colors md:hidden"
-               >
-                  <i className="fa-solid fa-trash"></i>
-               </button>
-
-               <div className="w-full md:w-auto">
-                  <div className="flex justify-between items-start">
-                    <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
-                    <button 
-                      onClick={handleReset} 
-                      className="hidden md:flex text-slate-600 hover:text-red-400 text-xs font-bold uppercase tracking-widest items-center gap-1 transition-colors ml-4"
-                      title="Limpar e Reiniciar"
-                    >
-                        <i className="fa-solid fa-trash"></i>
-                    </button>
-                  </div>
+               
+               {/* Lado Esquerdo: Títulos */}
+               <div className="w-full md:w-auto text-center md:text-left">
+                  <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
                   <p className="text-slate-400 text-sm">Prontos para o jogo.</p>
                </div>
 
-               <button onClick={handleCopyTeams} className="w-full md:w-auto px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2">
-                 <i className="fa-brands fa-whatsapp"></i> Copiar Resultado
-               </button>
+               {/* Lado Direito: Ações */}
+               <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
+                 <button 
+                  onClick={handleReset}
+                  className="px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-400/10 font-bold rounded-xl border border-red-400/30 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide"
+                 >
+                   <i className="fa-solid fa-trash"></i> Limpar Tudo
+                 </button>
+
+                 <button 
+                  onClick={handleCopyTeams}
+                  className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2"
+                 >
+                   <i className="fa-brands fa-whatsapp"></i> Copiar Resultado
+                 </button>
+               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
