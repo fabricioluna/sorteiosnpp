@@ -55,12 +55,10 @@ const App: React.FC = () => {
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
     
-    // MAPA DE JOGADORES EXISTENTES (Para preservar dados)
-    // Cria um mapa onde a chave é o nome em minúsculo para busca rápida
+    // MAPA DE JOGADORES EXISTENTES (Para preservar dados ao voltar)
     const existingPlayersMap = new Map(players.map(p => [p.name.toLowerCase(), p]));
 
     if (useChampionMode) {
-      // Lógica COM Time Campeão
       const champions = cleanNames(championText);
       const challengers = cleanNames(rawText);
 
@@ -75,26 +73,24 @@ const App: React.FC = () => {
         if (!confirmProceed) return;
       }
 
-      // Processa Campeões (Tenta recuperar dados existentes)
       const championObjs = champions.map((name, idx) => {
         const existing = existingPlayersMap.get(name.toLowerCase());
         return {
           id: existing ? existing.id : `champ-${idx}-${Date.now()}`,
           name: name,
           position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 10, // Padrão 10 se for novo campeão
+          level: existing ? existing.level : 10,
           isFixedInTeam1: true
         };
       });
 
-      // Processa Desafiantes (Tenta recuperar dados existentes)
       const challengerObjs = challengers.slice(0, 15).map((name, idx) => {
         const existing = existingPlayersMap.get(name.toLowerCase());
         return {
           id: existing ? existing.id : `player-${idx}-${Date.now()}`,
           name: name,
           position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 5, // Padrão 5 se for novo
+          level: existing ? existing.level : 5,
           isFixedInTeam1: false
         };
       });
@@ -102,7 +98,6 @@ const App: React.FC = () => {
       finalPlayers = [...championObjs, ...challengerObjs];
 
     } else {
-      // Lógica Padrão (Sem Time Campeão)
       const allNames = cleanNames(rawText);
       const totalFound = allNames.length;
 
@@ -123,7 +118,7 @@ const App: React.FC = () => {
           id: existing ? existing.id : `player-${idx}-${Date.now()}`,
           name: name,
           position: existing ? existing.position : 'Meia' as Position,
-          level: existing ? existing.level : 5 // Padrão 5 se for novo
+          level: existing ? existing.level : 5
         };
       });
     }
@@ -132,7 +127,6 @@ const App: React.FC = () => {
     setStep('classify');
   };
 
-  // Função para Voltar e Editar (Preenche os inputs com os dados atuais)
   const handleBackToInput = () => {
     if (useChampionMode) {
       const currentChampions = players.filter(p => p.isFixedInTeam1).map(p => p.name).join('\n');
@@ -171,7 +165,10 @@ const App: React.FC = () => {
     const text = teams
       .filter(t => t.players.length > 0)
       .map(t => {
-        const playerList = t.players.map(p => `• ${p.name} (${p.position}) - Nvl ${p.level}`).join('\n');
+        // ALTERAÇÃO AQUI: Removido o nível individual da cópia
+        const playerList = t.players.map(p => `• ${p.name} (${p.position})`).join('\n');
+        
+        // Mantive a força total do time para conferência, se quiser tirar isso também me avise
         const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
         return `*${t.name}* ${forceInfo}\n${playerList}`;
       }).join('\n\n');
@@ -272,13 +269,12 @@ const App: React.FC = () => {
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             
-            {/* CABEÇALHO DA TABELA - Com Botões Voltar e Limpar */}
+            {/* CABEÇALHO DA TABELA */}
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
               <div className="flex items-center gap-4 w-full md:w-auto">
                 <button 
                   onClick={handleBackToInput}
                   className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"
-                  title="Voltar para editar lista sem perder dados"
                 >
                   <i className="fa-solid fa-arrow-left"></i> Voltar p/ Cadastro
                 </button>
@@ -307,7 +303,7 @@ const App: React.FC = () => {
                     />
                   </div>
                   
-                  {/* Linha Inferior: Posição e Nível (1-10) */}
+                  {/* Linha Inferior: Posição e Nível */}
                   <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                     
                     {/* Botões de Posição */}
@@ -401,7 +397,7 @@ const App: React.FC = () => {
                               <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
                             </div>
                             
-                            {/* EXIBIÇÃO DO NÍVEL 1-10 */}
+                            {/* EXIBIÇÃO DO NÍVEL (Apenas visual aqui, não copia) */}
                             <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800">
                                <span className={`font-black text-sm ${getLevelColor(p.level)}`}>
                                  {p.level}
