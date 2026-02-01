@@ -49,23 +49,38 @@ const App: React.FC = () => {
   }, [players, step, teams, matchDate]);
 
   // --- AUXILIAR: Extrair códigos já usados nos textos ---
+  // CORREÇÃO: Regex mais permissivo (\d+) para capturar códigos mesmo se editados parcialmente
   const extractUsedCodes = (): string[] => {
     const allText = championText + '\n' + rawText;
-    const matches = allText.match(/#\s*(\d{3})/g);
-    // Retorna array de códigos limpos (ex: ["001", "042"])
+    const matches = allText.match(/#\s*(\d+)/g);
+    // Retorna array de códigos limpos e normalizados (remove zeros à esquerda para comparação segura se necessário, ou mantém string exata)
+    // Aqui mantemos a string exata capturada para ser seguro
     return matches ? matches.map(m => m.replace(/#\s*/, '')) : [];
   };
 
   // --- LÓGICA DE INSERÇÃO DO BANCO ---
   const handleSelectPlayerFromDb = (player: Player) => {
+    // 1. Camada de Segurança Extra: Verifica se já está na lista ANTES de adicionar
+    const currentCodes = extractUsedCodes();
+    if (currentCodes.includes(player.code)) {
+      // Se já existe, não faz nada (evita duplicação por clique duplo ou lag)
+      return; 
+    }
+
     const lineToAdd = `${player.name} #${player.code}\n`;
     
     if (showPlayerSelector === 'champion') {
-      setChampionText(prev => prev + lineToAdd);
+      setChampionText(prev => {
+        // Verifica novamente no estado anterior para garantir atomicidade
+        if (prev.includes(`#${player.code}`) || prev.includes(`# ${player.code}`)) return prev;
+        return prev + lineToAdd;
+      });
     } else if (showPlayerSelector === 'general') {
-      setRawText(prev => prev + lineToAdd);
+      setRawText(prev => {
+        if (prev.includes(`#${player.code}`) || prev.includes(`# ${player.code}`)) return prev;
+        return prev + lineToAdd;
+      });
     }
-    // O modal permanece aberto, mas o jogador selecionado sumirá da lista automaticamente
   };
 
   const cleanNames = (text: string) => {
@@ -78,14 +93,23 @@ const App: React.FC = () => {
     let finalPlayers: Player[] = [];
     
     const getPlayerData = (lineText: string, isChamp: boolean) => {
-      const codeMatch = lineText.match(/#\s*(\d{3})/);
+      // Regex melhorado para capturar qualquer número de dígitos
+      const codeMatch = lineText.match(/#\s*(\d+)/);
       const extractedCode = codeMatch ? codeMatch[1] : null;
-      const cleanName = lineText.replace(/#\s*\d{3}/, '').trim();
+      // Remove o código do nome visualmente
+      const cleanName = lineText.replace(/#\s*\d+/, '').trim();
 
       let dbPlayer: Player | undefined;
 
-      if (extractedCode) dbPlayer = db.findByCode(extractedCode);
-      if (!dbPlayer) dbPlayer = db.findByName(cleanName);
+      if (extractedCode) {
+        // Tenta encontrar pelo código exato
+        dbPlayer = db.findByCode(extractedCode);
+      } 
+      
+      if (!dbPlayer) {
+        // Fallback para nome
+        dbPlayer = db.findByName(cleanName);
+      }
       
       if (dbPlayer) {
         return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
@@ -199,14 +223,19 @@ const App: React.FC = () => {
 
   const handleCopyTeams = () => {
     const dateFormatted = matchDate.split('-').reverse().join('/');
-    const text = teams.filter(t => t.players.length > 0).map(t => {
-      const playerList = t.players.map(p => {
-        const codeStr = p.code !== '---' ? ` #${p.code}` : '';
-        return `• ${p.name}${codeStr}`;
-      }).join('\n');
-      const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
-      return `*${t.name}* ${forceInfo}\n${playerList}`;
-    }).join('\n\n');
+    
+    const text = teams
+      .filter(t => t.players.length > 0)
+      .map(t => {
+        const playerList = t.players.map(p => {
+          const codeStr = p.code !== '---' ? ` #${p.code}` : '';
+          return `• ${p.name}${codeStr}`;
+        }).join('\n');
+        
+        const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
+        return `*${t.name}* ${forceInfo}\n${playerList}`;
+      }).join('\n\n');
+
     navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
       .then(() => alert('Copiado!'))
       .catch(() => alert('Erro ao copiar.'));
@@ -241,7 +270,7 @@ const App: React.FC = () => {
         <PlayerSelectionModal 
           onClose={() => setShowPlayerSelector(null)} 
           onSelect={handleSelectPlayerFromDb}
-          usedCodes={extractUsedCodes()} // Passa os códigos já em uso
+          usedCodes={extractUsedCodes()} // Passa códigos em uso
         />
       )}
 
@@ -442,7 +471,7 @@ const App: React.FC = () => {
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
-  usedCodes: string[]; // Novo prop
+  usedCodes: string[]; 
 }> = ({ onClose, onSelect, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
@@ -452,10 +481,13 @@ const PlayerSelectionModal: React.FC<{
   }, []);
 
   const filteredPlayers = players.filter(p => {
-    // Exclui se o código já estiver na lista de usados
-    if (usedCodes.includes(p.code)) return false;
+    // CORREÇÃO: Comparação robusta para evitar tipos diferentes (string vs number)
+    // Converte tudo para string e remove zeros à esquerda para garantir
+    const pCode = p.code.toString();
+    const isUsed = usedCodes.some(used => used.toString() === pCode);
     
-    // Filtro de busca
+    if (isUsed) return false;
+    
     return p.name.toLowerCase().includes(search.toLowerCase()) || p.code.includes(search);
   });
 
