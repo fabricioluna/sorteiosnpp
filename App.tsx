@@ -49,37 +49,32 @@ const App: React.FC = () => {
   }, [players, step, teams, matchDate]);
 
   // --- AUXILIAR: Extrair códigos já usados nos textos ---
-  // CORREÇÃO: Regex mais permissivo (\d+) para capturar códigos mesmo se editados parcialmente
   const extractUsedCodes = (): string[] => {
     const allText = championText + '\n' + rawText;
+    // Captura qualquer sequência numérica após uma cerquilha (#)
     const matches = allText.match(/#\s*(\d+)/g);
-    // Retorna array de códigos limpos e normalizados (remove zeros à esquerda para comparação segura se necessário, ou mantém string exata)
-    // Aqui mantemos a string exata capturada para ser seguro
-    return matches ? matches.map(m => m.replace(/#\s*/, '')) : [];
+    
+    if (!matches) return [];
+
+    // Limpa: Remove o # e espaços, deixando apenas os números
+    return matches.map(m => m.replace(/[^0-9]/g, ''));
   };
 
   // --- LÓGICA DE INSERÇÃO DO BANCO ---
   const handleSelectPlayerFromDb = (player: Player) => {
-    // 1. Camada de Segurança Extra: Verifica se já está na lista ANTES de adicionar
-    const currentCodes = extractUsedCodes();
-    if (currentCodes.includes(player.code)) {
-      // Se já existe, não faz nada (evita duplicação por clique duplo ou lag)
-      return; 
-    }
+    // Verificação de Segurança: Impede adicionar se o código já estiver no texto
+    const usedCodes = extractUsedCodes();
+    // Compara como número para evitar erros de "001" vs "1"
+    const isAlreadyUsed = usedCodes.some(c => parseInt(c) === parseInt(player.code));
+
+    if (isAlreadyUsed) return;
 
     const lineToAdd = `${player.name} #${player.code}\n`;
     
     if (showPlayerSelector === 'champion') {
-      setChampionText(prev => {
-        // Verifica novamente no estado anterior para garantir atomicidade
-        if (prev.includes(`#${player.code}`) || prev.includes(`# ${player.code}`)) return prev;
-        return prev + lineToAdd;
-      });
+      setChampionText(prev => prev + lineToAdd);
     } else if (showPlayerSelector === 'general') {
-      setRawText(prev => {
-        if (prev.includes(`#${player.code}`) || prev.includes(`# ${player.code}`)) return prev;
-        return prev + lineToAdd;
-      });
+      setRawText(prev => prev + lineToAdd);
     }
   };
 
@@ -93,23 +88,14 @@ const App: React.FC = () => {
     let finalPlayers: Player[] = [];
     
     const getPlayerData = (lineText: string, isChamp: boolean) => {
-      // Regex melhorado para capturar qualquer número de dígitos
       const codeMatch = lineText.match(/#\s*(\d+)/);
       const extractedCode = codeMatch ? codeMatch[1] : null;
-      // Remove o código do nome visualmente
       const cleanName = lineText.replace(/#\s*\d+/, '').trim();
 
       let dbPlayer: Player | undefined;
 
-      if (extractedCode) {
-        // Tenta encontrar pelo código exato
-        dbPlayer = db.findByCode(extractedCode);
-      } 
-      
-      if (!dbPlayer) {
-        // Fallback para nome
-        dbPlayer = db.findByName(cleanName);
-      }
+      if (extractedCode) dbPlayer = db.findByCode(extractedCode);
+      if (!dbPlayer) dbPlayer = db.findByName(cleanName);
       
       if (dbPlayer) {
         return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
@@ -467,7 +453,7 @@ const App: React.FC = () => {
 
 // --- COMPONENTES AUXILIARES ---
 
-// 1. Modal de Seleção de Jogadores (ATUALIZADO)
+// 1. Modal de Seleção de Jogadores (COM FILTRO CORRIGIDO)
 const PlayerSelectionModal: React.FC<{ 
   onClose: () => void; 
   onSelect: (p: Player) => void;
@@ -481,10 +467,8 @@ const PlayerSelectionModal: React.FC<{
   }, []);
 
   const filteredPlayers = players.filter(p => {
-    // CORREÇÃO: Comparação robusta para evitar tipos diferentes (string vs number)
-    // Converte tudo para string e remove zeros à esquerda para garantir
-    const pCode = p.code.toString();
-    const isUsed = usedCodes.some(used => used.toString() === pCode);
+    // CONVERTE PARA INTEIRO PARA COMPARAR ("001" == 1)
+    const isUsed = usedCodes.some(used => parseInt(used) === parseInt(p.code));
     
     if (isUsed) return false;
     
@@ -542,7 +526,7 @@ const PlayerSelectionModal: React.FC<{
   );
 };
 
-// 2. Linha de Cadastro Rápido (Igual)
+// 2. Linha de Cadastro Rápido
 const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
