@@ -48,8 +48,8 @@ const App: React.FC = () => {
   const cleanNames = (text: string) => {
     return text.split('\n')
       .map(line => line
-        .replace(/^[\d\.\-\:\)\(\[\]\s]+/, '') 
-        .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') 
+        .replace(/^[\d\.\-\:\)\(\[\]\s]+/, '') // Remove numeração do início (1. Nome)
+        .replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '') // Remove emojis
         .trim())
       .filter(name => name.length >= 2);
   };
@@ -57,29 +57,30 @@ const App: React.FC = () => {
   const handleGenerateList = () => {
     let finalPlayers: Player[] = [];
     
-    // LÓGICA DE IDENTIFICAÇÃO (Código > Nome)
+    // LÓGICA DE IDENTIFICAÇÃO INTELIGENTE
     const getPlayerData = (lineText: string, isChamp: boolean) => {
-      // 1. Tenta extrair o código #000
-      const codeMatch = lineText.match(/#(\d{3})/);
+      // 1. Tenta extrair o código no formato #000 ou # 000 (com ou sem espaço)
+      const codeMatch = lineText.match(/#\s*(\d{3})/);
       const extractedCode = codeMatch ? codeMatch[1] : null;
 
-      // 2. Limpa o nome (remove o código da string para não ficar "Nome #001" na tela)
-      const cleanName = lineText.replace(/#\d{3}/, '').trim();
+      // 2. Limpa o nome removendo o código da string para não ficar "Nome #001" na interface visual
+      const cleanName = lineText.replace(/#\s*\d{3}/, '').trim();
 
       let dbPlayer: Player | undefined;
 
       if (extractedCode) {
-        // PRIORIDADE 1: Busca pelo código
+        // PRIORIDADE 1: Busca pelo código exato no Banco de Dados
+        // Isso permite que "Fafá #001" carregue os dados de "Fabrício Luna"
         dbPlayer = db.findByCode(extractedCode);
       } 
       
       if (!dbPlayer) {
-        // PRIORIDADE 2: Busca pelo nome (se não achou código ou código não existe)
+        // PRIORIDADE 2: Se não achou código, busca pelo nome digitado
         dbPlayer = db.findByName(cleanName);
       }
       
       if (dbPlayer) {
-        // Jogador encontrado no Banco
+        // JOGADOR ENCONTRADO (CADASTRO)
         return {
           ...dbPlayer,
           id: `match-${Date.now()}-${Math.random()}`,
@@ -87,11 +88,11 @@ const App: React.FC = () => {
         };
       }
 
-      // Jogador NÃO encontrado (Temporário)
+      // JOGADOR NÃO CADASTRADO (CONVIDADO/TEMPORÁRIO)
       return {
         id: `temp-${Date.now()}-${Math.random()}`,
-        code: extractedCode || '---',
-        name: cleanName,
+        code: extractedCode || '---', // Usa o código digitado ou traços
+        name: cleanName, // Usa o nome limpo (sem o código)
         position: 'Meia' as Position,
         level: isChamp ? 10 : 5,
         redCards: 0,
@@ -272,7 +273,7 @@ const App: React.FC = () => {
                 </label>
                 <textarea
                   className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20"
-                  placeholder="Cole aqui os 5 nomes... (ex: João #001)"
+                  placeholder="Cole aqui os 5 nomes... (ex: Nome #001)"
                   value={championText}
                   onChange={(e) => setChampionText(e.target.value)}
                 />
@@ -284,7 +285,7 @@ const App: React.FC = () => {
                 {useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}
               </label>
               <p className="text-xs text-slate-500 mb-2">
-                * Para usar o cadastro, digite o nome ou "Nome #000" para forçar o código.
+                * Dica: Digite "Apelido #001" para puxar o cadastro do jogador 001 automaticamente.
               </p>
               <textarea
                 className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700"
@@ -331,12 +332,14 @@ const App: React.FC = () => {
                 <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
                   
                   <div className="flex items-center gap-2">
+                    {/* Exibe o código se existir */}
                     {player.code !== '---' && (
                        <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">
                          #{player.code}
                        </span>
                     )}
                     {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
+                    
                     <input
                       type="text"
                       value={player.name}
