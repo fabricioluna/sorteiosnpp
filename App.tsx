@@ -106,16 +106,12 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
-  // --- LÓGICA DE SORTEIO COM INTERCEPTAÇÃO ---
   const handleSortTeams = () => {
-    // Verifica se existem jogadores temporários (sem código)
     const tempPlayers = players.filter(p => p.code === '---');
-
     if (tempPlayers.length > 0) {
       setTempPlayersToRegister(tempPlayers);
       setShowQuickRegister(true);
     } else {
-      // Se todos já têm código, sorteia direto
       proceedToSort();
     }
   };
@@ -127,24 +123,18 @@ const App: React.FC = () => {
     setShowQuickRegister(false);
   };
 
-  // Salva o jogador no banco e atualiza a lista da partida
   const handleQuickSave = (tempId: string, name: string, position: Position, level: number) => {
-    // 1. Salva no Banco
     const newDbPlayer = db.addPlayer({ name, position, level });
-
-    // 2. Atualiza a lista da partida atual (Substitui o temp pelo oficial)
     setPlayers(prev => prev.map(p => {
       if (p.id === tempId) {
         return {
-          ...newDbPlayer, // Pega o código gerado e ID do banco
-          id: p.id, // Mantém o ID da partida (importante para o React key não quebrar)
-          isFixedInTeam1: p.isFixedInTeam1 // Mantém status de campeão
+          ...newDbPlayer, 
+          id: p.id,
+          isFixedInTeam1: p.isFixedInTeam1
         };
       }
       return p;
     }));
-
-    // 3. Remove da lista de pendentes do modal
     setTempPlayersToRegister(prev => prev.filter(p => p.id !== tempId));
   };
 
@@ -161,14 +151,26 @@ const App: React.FC = () => {
     }
   };
 
+  // --- LÓGICA DE CÓPIA PARA WHATSAPP ATUALIZADA ---
   const handleCopyTeams = () => {
     const dateFormatted = matchDate.split('-').reverse().join('/');
-    const text = teams.filter(t => t.players.length > 0).map(t => {
-      const playerList = t.players.map(p => `• ${p.name} (${p.position})`).join('\n');
-      const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
-      return `*${t.name}* ${forceInfo}\n${playerList}`;
-    }).join('\n\n');
-    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`).then(() => alert('Copiado!'));
+    
+    const text = teams
+      .filter(t => t.players.length > 0)
+      .map(t => {
+        const playerList = t.players.map(p => {
+          // Adiciona o código se ele existir
+          const codeStr = p.code !== '---' ? ` #${p.code}` : '';
+          return `• ${p.name}${codeStr} (${p.position})`;
+        }).join('\n');
+        
+        const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
+        return `*${t.name}* ${forceInfo}\n${playerList}`;
+      }).join('\n\n');
+
+    navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
+      .then(() => alert('Copiado!'))
+      .catch(() => alert('Erro ao copiar.'));
   };
 
   const positions: { id: Position; icon: string; label: string }[] = [
@@ -352,7 +354,14 @@ const App: React.FC = () => {
                       <ul className="space-y-2 md:space-y-3">
                         {team.players.map((p) => (
                           <li key={p.id} className="flex justify-between items-center border-b border-slate-800 pb-2 last:border-0 last:pb-0">
-                            <div><div className={`font-bold text-sm md:text-base ${p.isFixedInTeam1 ? 'text-yellow-400' : 'text-gray-100'}`}>{p.name}</div><div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div></div>
+                            <div>
+                              <div className={`font-bold text-sm md:text-base flex items-center gap-2 ${p.isFixedInTeam1 ? 'text-yellow-400' : 'text-gray-100'}`}>
+                                {p.name}
+                                {/* CÓDIGO NO RESULTADO VISUAL */}
+                                {p.code !== '---' && <span className="text-slate-500 text-[10px] font-mono">#{p.code}</span>}
+                              </div>
+                              <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
+                            </div>
                             <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800"><span className={`font-black text-sm ${getLevelColor(p.level)}`}>{p.level}</span><i className="fa-solid fa-bolt text-[10px] text-slate-600"></i></div>
                           </li>
                         ))}
@@ -380,7 +389,7 @@ const App: React.FC = () => {
   );
 };
 
-// Componente Auxiliar para Linha de Cadastro Rápido (Inline para simplificar arquivo)
+// Componente Auxiliar para Linha de Cadastro Rápido
 const QuickRegisterRow: React.FC<{ player: Player; onSave: (id: string, name: string, pos: Position, lvl: number) => void }> = ({ player, onSave }) => {
   const [name, setName] = useState(player.name);
   const [position, setPosition] = useState(player.position);
