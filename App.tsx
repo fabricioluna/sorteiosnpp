@@ -17,9 +17,12 @@ const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
 
-  // --- ESTADO PARA O MODAL DE CADASTRO RÁPIDO ---
+  // --- ESTADOS PARA MODAIS ---
   const [showQuickRegister, setShowQuickRegister] = useState(false);
   const [tempPlayersToRegister, setTempPlayersToRegister] = useState<Player[]>([]);
+  
+  // Novo estado para seleção de jogadores do banco
+  const [showPlayerSelector, setShowPlayerSelector] = useState<'champion' | 'general' | null>(null);
 
   // --- PERSISTÊNCIA ---
   useEffect(() => {
@@ -45,6 +48,19 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_teams', JSON.stringify(teams));
     localStorage.setItem('snpp_match_date', matchDate);
   }, [players, step, teams, matchDate]);
+
+  // --- LÓGICA DE INSERÇÃO DO BANCO ---
+  const handleSelectPlayerFromDb = (player: Player) => {
+    const lineToAdd = `${player.name} #${player.code}\n`;
+    
+    if (showPlayerSelector === 'champion') {
+      setChampionText(prev => prev + lineToAdd);
+    } else if (showPlayerSelector === 'general') {
+      setRawText(prev => prev + lineToAdd);
+    }
+    // Não fecha o modal automaticamente para permitir selecionar vários
+    // setShowPlayerSelector(null); 
+  };
 
   const cleanNames = (text: string) => {
     return text.split('\n')
@@ -123,19 +139,44 @@ const App: React.FC = () => {
     setShowQuickRegister(false);
   };
 
-  const handleQuickSave = (tempId: string, name: string, position: Position, level: number) => {
-    const newDbPlayer = db.addPlayer({ name, position, level });
+  // --- QUICK REGISTER LOGIC ---
+  const handleUpdateTempPlayer = (id: string, field: keyof Player, value: any) => {
+    setTempPlayersToRegister(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
+  };
+
+  const handleQuickSaveOne = (tempId: string) => {
+    const playerToSave = tempPlayersToRegister.find(p => p.id === tempId);
+    if (!playerToSave) return;
+
+    const newDbPlayer = db.addPlayer({
+      name: playerToSave.name,
+      position: playerToSave.position,
+      level: playerToSave.level
+    });
+
     setPlayers(prev => prev.map(p => {
       if (p.id === tempId) {
-        return {
-          ...newDbPlayer, 
-          id: p.id,
-          isFixedInTeam1: p.isFixedInTeam1
-        };
+        return { ...newDbPlayer, id: p.id, isFixedInTeam1: p.isFixedInTeam1 };
       }
       return p;
     }));
     setTempPlayersToRegister(prev => prev.filter(p => p.id !== tempId));
+  };
+
+  const handleSaveAll = () => {
+    const updatesMap = new Map<string, Player>();
+    tempPlayersToRegister.forEach(p => {
+      const newDbPlayer = db.addPlayer({ name: p.name, position: p.position, level: p.level });
+      updatesMap.set(p.id, newDbPlayer);
+    });
+    setPlayers(prev => prev.map(p => {
+      if (updatesMap.has(p.id)) {
+        const dbP = updatesMap.get(p.id)!;
+        return { ...dbP, id: p.id, isFixedInTeam1: p.isFixedInTeam1 };
+      }
+      return p;
+    }));
+    setTempPlayersToRegister([]);
   };
 
   const handleReset = () => {
@@ -151,24 +192,16 @@ const App: React.FC = () => {
     }
   };
 
-  // --- LÓGICA DE CÓPIA PARA WHATSAPP ATUALIZADA (SEM POSIÇÃO) ---
   const handleCopyTeams = () => {
     const dateFormatted = matchDate.split('-').reverse().join('/');
-    
-    const text = teams
-      .filter(t => t.players.length > 0)
-      .map(t => {
-        const playerList = t.players.map(p => {
-          // Adiciona o código se ele existir
-          const codeStr = p.code !== '---' ? ` #${p.code}` : '';
-          // REMOVIDO: (${p.position})
-          return `• ${p.name}${codeStr}`;
-        }).join('\n');
-        
-        const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
-        return `*${t.name}* ${forceInfo}\n${playerList}`;
-      }).join('\n\n');
-
+    const text = teams.filter(t => t.players.length > 0).map(t => {
+      const playerList = t.players.map(p => {
+        const codeStr = p.code !== '---' ? ` #${p.code}` : '';
+        return `• ${p.name}${codeStr}`;
+      }).join('\n');
+      const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
+      return `*${t.name}* ${forceInfo}\n${playerList}`;
+    }).join('\n\n');
     navigator.clipboard.writeText(`⚽ *O SHOW NÃO PODE PARAR* ⚽\n📅 Data: ${dateFormatted}\n\n${text}`)
       .then(() => alert('Copiado!'))
       .catch(() => alert('Erro ao copiar.'));
@@ -198,50 +231,48 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen flex flex-col items-center pb-12 bg-[#020617] text-gray-100 selection:bg-orange-500 selection:text-white font-inter">
       
+      {/* MODAL DE SELEÇÃO DE JOGADORES (DO BANCO) */}
+      {showPlayerSelector && (
+        <PlayerSelectionModal 
+          onClose={() => setShowPlayerSelector(null)} 
+          onSelect={handleSelectPlayerFromDb} 
+        />
+      )}
+
       {/* MODAL DE CADASTRO RÁPIDO */}
       {showQuickRegister && (
         <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl">
             <div className="p-6 border-b border-slate-800 bg-slate-950 rounded-t-2xl">
-              <h2 className="text-xl font-black text-white flex items-center gap-2">
-                <i className="fa-solid fa-user-plus text-orange-500"></i>
-                Jogadores Não Cadastrados
-              </h2>
-              <p className="text-slate-400 text-sm mt-1">
-                Deseja salvar estes atletas no banco de dados para os próximos jogos?
-              </p>
+              <div className="flex justify-between items-start">
+                <div>
+                  <h2 className="text-xl font-black text-white flex items-center gap-2">
+                    <i className="fa-solid fa-user-plus text-orange-500"></i>
+                    Novos Jogadores ({tempPlayersToRegister.length})
+                  </h2>
+                  <p className="text-slate-400 text-sm mt-1">Cadastre-os agora para gerar o código #ID permanente.</p>
+                </div>
+                {tempPlayersToRegister.length > 1 && (
+                  <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all">
+                    <i className="fa-solid fa-save"></i> Salvar Todos
+                  </button>
+                )}
+              </div>
             </div>
-            
             <div className="p-6 overflow-y-auto custom-scrollbar flex-1">
               {tempPlayersToRegister.length === 0 ? (
-                <div className="text-center py-8 text-green-400 font-bold flex flex-col items-center gap-2">
-                  <i className="fa-solid fa-check-circle text-4xl"></i>
-                  <p>Todos os jogadores foram processados!</p>
-                </div>
+                <div className="text-center py-8 text-green-400 font-bold flex flex-col items-center gap-2"><i className="fa-solid fa-check-circle text-4xl"></i><p>Todos os jogadores foram processados!</p></div>
               ) : (
                 <div className="space-y-4">
                   {tempPlayersToRegister.map(p => (
-                    <QuickRegisterRow key={p.id} player={p} onSave={handleQuickSave} />
+                    <QuickRegisterRow key={p.id} player={p} onUpdate={handleUpdateTempPlayer} onSave={() => handleQuickSaveOne(p.id)} />
                   ))}
                 </div>
               )}
             </div>
-
             <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex justify-between gap-4">
-              <button 
-                onClick={() => proceedToSort()}
-                className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors"
-              >
-                Pular Restantes e Sortear
-              </button>
-              {tempPlayersToRegister.length === 0 && (
-                <button 
-                  onClick={() => proceedToSort()}
-                  className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse"
-                >
-                  Concluir e Sortear
-                </button>
-              )}
+              <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Pular Restantes e Sortear</button>
+              {tempPlayersToRegister.length === 0 && <button onClick={() => proceedToSort()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>}
             </div>
           </div>
         </div>
@@ -277,12 +308,22 @@ const App: React.FC = () => {
             </div>
             {useChampionMode && (
               <div className="mb-6 animate-in slide-in-from-top-2 duration-300">
-                <label className="block text-sm font-bold text-yellow-500 mb-2 uppercase tracking-wider"><i className="fa-solid fa-trophy mr-1"></i> Lista do Time Campeão (5 Atletas)</label>
+                <div className="flex justify-between items-end mb-2">
+                  <label className="block text-sm font-bold text-yellow-500 uppercase tracking-wider"><i className="fa-solid fa-trophy mr-1"></i> Lista do Time Campeão</label>
+                  <button onClick={() => setShowPlayerSelector('champion')} className="text-xs bg-slate-800 hover:bg-yellow-600 hover:text-white text-yellow-500 px-3 py-1 rounded border border-yellow-500/30 transition-colors font-bold">
+                    <i className="fa-solid fa-list"></i> Inserir do Cadastro
+                  </button>
+                </div>
                 <textarea className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20" placeholder="Cole aqui os 5 nomes... (ex: Nome #001)" value={championText} onChange={(e) => setChampionText(e.target.value)} />
               </div>
             )}
             <div className="mb-6">
-              <label className="block text-sm font-bold text-slate-300 mb-2 uppercase tracking-wider">{useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}</label>
+              <div className="flex justify-between items-end mb-2">
+                <label className="block text-sm font-bold text-slate-300 uppercase tracking-wider">{useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}</label>
+                <button onClick={() => setShowPlayerSelector('general')} className="text-xs bg-slate-800 hover:bg-orange-600 hover:text-white text-orange-500 px-3 py-1 rounded border border-orange-500/30 transition-colors font-bold">
+                  <i className="fa-solid fa-list"></i> Inserir do Cadastro
+                </button>
+              </div>
               <p className="text-xs text-slate-500 mb-2">* Dica: Digite "Apelido #001" para puxar o cadastro do jogador 001 automaticamente.</p>
               <textarea className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700" placeholder={useChampionMode ? "Cole aqui os outros jogadores..." : "Cole a lista completa..."} value={rawText} onChange={(e) => setRawText(e.target.value)} />
             </div>
@@ -290,6 +331,9 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* ... (Resto do código igual: STEP classify e results) ... */}
+        {/* Como o código é longo, vou manter as partes abaixo que não mudaram para garantir integridade, mas compactadas onde possível */}
+        
         {step === 'classify' && (
           <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
@@ -358,7 +402,6 @@ const App: React.FC = () => {
                             <div>
                               <div className={`font-bold text-sm md:text-base flex items-center gap-2 ${p.isFixedInTeam1 ? 'text-yellow-400' : 'text-gray-100'}`}>
                                 {p.name}
-                                {/* CÓDIGO NO RESULTADO VISUAL */}
                                 {p.code !== '---' && <span className="text-slate-500 text-[10px] font-mono">#{p.code}</span>}
                               </div>
                               <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
@@ -390,25 +433,89 @@ const App: React.FC = () => {
   );
 };
 
-// Componente Auxiliar para Linha de Cadastro Rápido
-const QuickRegisterRow: React.FC<{ player: Player; onSave: (id: string, name: string, pos: Position, lvl: number) => void }> = ({ player, onSave }) => {
-  const [name, setName] = useState(player.name);
-  const [position, setPosition] = useState(player.position);
-  const [level, setLevel] = useState(player.level);
+// --- COMPONENTES AUXILIARES ---
 
+// 1. Modal de Seleção de Jogadores
+const PlayerSelectionModal: React.FC<{ onClose: () => void; onSelect: (p: Player) => void }> = ({ onClose, onSelect }) => {
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [search, setSearch] = useState('');
+
+  useEffect(() => {
+    // Carrega e ordena
+    setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
+  }, []);
+
+  const filteredPlayers = players.filter(p => 
+    p.name.toLowerCase().includes(search.toLowerCase()) || 
+    p.code.includes(search)
+  );
+
+  return (
+    <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center p-4 backdrop-blur-sm animate-in fade-in">
+      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-lg max-h-[80vh] flex flex-col shadow-2xl">
+        <div className="p-4 border-b border-slate-800 bg-slate-950 rounded-t-2xl flex justify-between items-center">
+          <h2 className="text-lg font-bold text-white flex items-center gap-2">
+            <i className="fa-solid fa-address-book text-orange-500"></i> Selecionar Atleta
+          </h2>
+          <button onClick={onClose} className="text-slate-500 hover:text-white"><i className="fa-solid fa-xmark text-xl"></i></button>
+        </div>
+        
+        <div className="p-4 bg-slate-950 border-b border-slate-800">
+          <input 
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Buscar por nome ou código..."
+            className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"
+          />
+        </div>
+
+        <div className="overflow-y-auto custom-scrollbar flex-1 p-2">
+          {filteredPlayers.length === 0 ? (
+            <p className="text-center text-slate-500 py-4">Nenhum jogador encontrado.</p>
+          ) : (
+            <div className="grid grid-cols-1 gap-2">
+              {filteredPlayers.map(p => (
+                <button 
+                  key={p.id} 
+                  onClick={() => onSelect(p)}
+                  className="flex items-center gap-3 p-3 bg-slate-800 hover:bg-slate-700 rounded-xl transition-colors text-left group"
+                >
+                  <span className="bg-slate-950 text-slate-400 font-mono text-xs px-1.5 py-0.5 rounded border border-slate-700">#{p.code}</span>
+                  <div className="flex-1">
+                    <div className="font-bold text-white group-hover:text-orange-400 transition-colors">{p.name}</div>
+                    <div className="text-xs text-slate-500">{p.position} • Nível {p.level}</div>
+                  </div>
+                  <i className="fa-solid fa-plus text-slate-600 group-hover:text-white"></i>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        
+        <div className="p-4 bg-slate-950 border-t border-slate-800 rounded-b-2xl text-center">
+          <button onClick={onClose} className="text-sm text-slate-500 hover:text-white">Fechar</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 2. Linha de Cadastro Rápido
+const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field: keyof Player, value: any) => void; onSave: () => void }> = ({ player, onUpdate, onSave }) => {
   return (
     <div className="bg-slate-800 p-4 rounded-xl flex flex-col gap-3 border border-slate-700">
       <div className="flex flex-col md:flex-row gap-3">
         <input 
-          value={name} 
-          onChange={(e) => setName(e.target.value)} 
+          value={player.name} 
+          onChange={(e) => onUpdate(player.id, 'name', e.target.value)} 
           className="flex-1 bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"
           placeholder="Nome do Jogador"
         />
         <div className="flex gap-2">
           <select 
-            value={position} 
-            onChange={(e) => setPosition(e.target.value as Position)} 
+            value={player.position} 
+            onChange={(e) => onUpdate(player.id, 'position', e.target.value)} 
             className="bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"
           >
             <option value="Zagueiro">Zagueiro</option>
@@ -417,14 +524,14 @@ const QuickRegisterRow: React.FC<{ player: Player; onSave: (id: string, name: st
           </select>
           <input 
             type="number" min="1" max="10"
-            value={level} 
-            onChange={(e) => setLevel(Number(e.target.value))} 
+            value={player.level} 
+            onChange={(e) => onUpdate(player.id, 'level', Number(e.target.value))} 
             className="w-16 bg-slate-950 border border-slate-600 rounded-lg px-2 py-2 text-white focus:border-orange-500 outline-none text-center"
           />
         </div>
       </div>
       <button 
-        onClick={() => onSave(player.id, name, position, level)}
+        onClick={onSave}
         className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm"
       >
         <i className="fa-solid fa-floppy-disk"></i> Salvar no Banco
