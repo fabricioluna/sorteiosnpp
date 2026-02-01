@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Player, Position } from '../types';
 import { db } from '../utils/database';
 
@@ -11,21 +11,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [password, setPassword] = useState('');
   const [players, setPlayers] = useState<Player[]>([]);
   
-  // Referência para scroll automático
-  const formRef = useRef<HTMLDivElement>(null);
+  // Estado para NOVO Jogador (Formulário do Topo)
+  const [newName, setNewName] = useState('');
+  const [newPosition, setNewPosition] = useState<Position>('Meia');
+  const [newLevel, setNewLevel] = useState(5);
 
-  // Form States
+  // Estado para EDIÇÃO INLINE (Na própria lista)
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [name, setName] = useState('');
-  const [position, setPosition] = useState<Position>('Meia');
-  const [level, setLevel] = useState(5);
+  const [editName, setEditName] = useState('');
+  const [editPosition, setEditPosition] = useState<Position>('Meia');
+  const [editLevel, setEditLevel] = useState(5);
 
   useEffect(() => {
     if (isAuthenticated) loadPlayers();
   }, [isAuthenticated]);
 
   const loadPlayers = () => {
-    // Carrega e ordena alfabeticamente
     setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
   };
 
@@ -38,50 +39,46 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  // --- CRIAR NOVO ---
+  const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) return;
+    if (!newName.trim()) return;
 
-    if (editingId) {
-      // MODO EDIÇÃO
-      db.updatePlayer(editingId, {
-        name,
-        position,
-        level
-      });
-      alert('Jogador atualizado com sucesso!');
-    } else {
-      // MODO CRIAÇÃO
-      db.addPlayer({
-        name,
-        position,
-        level
-      });
-    }
+    db.addPlayer({
+      name: newName,
+      position: newPosition,
+      level: newLevel
+    });
 
-    // Limpar formulário
-    setName('');
-    setPosition('Meia');
-    setLevel(5);
-    setEditingId(null);
+    // Limpa apenas o formulário de criação
+    setNewName('');
+    setNewPosition('Meia');
+    setNewLevel(5);
     loadPlayers();
   };
 
-  const handleEdit = (p: Player) => {
-    setName(p.name);
-    setPosition(p.position);
-    setLevel(p.level);
+  // --- EDITAR INLINE ---
+  const startEditing = (p: Player) => {
     setEditingId(p.id);
-    
-    // Rola a tela para o formulário de edição
-    formRef.current?.scrollIntoView({ behavior: 'smooth' });
+    setEditName(p.name);
+    setEditPosition(p.position);
+    setEditLevel(p.level);
   };
 
-  const handleCancelEdit = () => {
+  const saveEditing = () => {
+    if (editingId && editName.trim()) {
+      db.updatePlayer(editingId, {
+        name: editName,
+        position: editPosition,
+        level: editLevel
+      });
+      setEditingId(null);
+      loadPlayers();
+    }
+  };
+
+  const cancelEditing = () => {
     setEditingId(null);
-    setName('');
-    setLevel(5);
-    setPosition('Meia');
   };
 
   const handleDelete = (id: string) => {
@@ -92,8 +89,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   };
 
   const getLevelColor = (l: number) => {
-    if (l >= 8) return 'text-green-400';
+    if (l >= 9) return 'text-purple-400';
+    if (l >= 7) return 'text-green-400';
     if (l >= 5) return 'text-yellow-400';
+    if (l >= 3) return 'text-orange-400';
     return 'text-red-400';
   };
 
@@ -136,17 +135,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         </button>
       </div>
 
-      {/* FORMULÁRIO DE CADASTRO / EDIÇÃO */}
-      <div ref={formRef} className={`p-6 rounded-2xl border mb-8 shadow-xl transition-colors ${editingId ? 'bg-blue-900/20 border-blue-500/50' : 'bg-slate-900 border-slate-800'}`}>
-        <h3 className={`font-bold uppercase tracking-wider mb-4 flex items-center gap-2 ${editingId ? 'text-blue-400' : 'text-orange-500'}`}>
-          {editingId ? <><i className="fa-solid fa-pen-to-square"></i> Editando Jogador</> : <><i className="fa-solid fa-user-plus"></i> Novo Jogador</>}
+      {/* FORMULÁRIO DE CADASTRO (Apenas Novos) */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8 shadow-xl">
+        <h3 className="text-green-500 font-bold uppercase tracking-wider mb-4 flex items-center gap-2">
+          <i className="fa-solid fa-user-plus"></i> Novo Cadastro
         </h3>
-        
-        <form onSubmit={handleSave} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+        <form onSubmit={handleCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
           <div className="md:col-span-5">
             <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Nome</label>
             <input 
-              value={name} onChange={e => setName(e.target.value)}
+              value={newName} onChange={e => setNewName(e.target.value)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-orange-500 outline-none"
               placeholder="Ex: João Silva" required
             />
@@ -154,7 +152,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           <div className="md:col-span-3">
             <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Posição</label>
             <select 
-              value={position} onChange={e => setPosition(e.target.value as Position)}
+              value={newPosition} onChange={e => setNewPosition(e.target.value as Position)}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-orange-500 outline-none"
             >
               <option value="Zagueiro">Zagueiro</option>
@@ -163,62 +161,116 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             </select>
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Nível (1-10)</label>
+            <label className="text-xs font-bold text-slate-500 uppercase block mb-1">Nível</label>
             <input 
               type="number" min="1" max="10"
-              value={level} onChange={e => setLevel(Number(e.target.value))}
+              value={newLevel} onChange={e => setNewLevel(Number(e.target.value))}
               className="w-full bg-slate-950 border border-slate-700 rounded-lg p-3 text-white focus:border-orange-500 outline-none text-center"
             />
           </div>
-          <div className="md:col-span-2 flex gap-2">
-            <button type="submit" className={`w-full text-white font-bold py-3 rounded-lg shadow-lg transition-colors ${editingId ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}>
-              {editingId ? 'SALVAR' : 'CADASTRAR'}
+          <div className="md:col-span-2">
+            <button type="submit" className="w-full bg-green-600 hover:bg-green-700 text-white font-bold py-3 rounded-lg shadow-lg">
+              CADASTRAR
             </button>
-            {editingId && (
-              <button type="button" onClick={handleCancelEdit} className="px-3 bg-slate-800 hover:bg-red-900/50 text-white rounded-lg border border-slate-700" title="Cancelar Edição">
-                <i className="fa-solid fa-xmark"></i>
-              </button>
-            )}
           </div>
         </form>
       </div>
 
-      {/* LISTA DE JOGADORES */}
+      {/* LISTA DE JOGADORES (Com Edição Inline) */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
         <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
           <span className="font-bold text-slate-400 text-sm uppercase">Atletas Cadastrados ({players.length})</span>
         </div>
         <div className="divide-y divide-slate-800 max-h-[500px] overflow-y-auto custom-scrollbar">
           {players.map(p => (
-            <div key={p.id} className={`p-4 flex items-center justify-between transition-colors group ${editingId === p.id ? 'bg-blue-900/10 border-l-2 border-blue-500' : 'hover:bg-slate-800/50'}`}>
-              <div className="flex items-center gap-4">
+            <div key={p.id} className={`p-4 flex items-center justify-between transition-colors group ${editingId === p.id ? 'bg-blue-900/20 border-l-2 border-blue-500' : 'hover:bg-slate-800/50'}`}>
+              
+              {/* LADO ESQUERDO: INFO OU INPUTS */}
+              <div className="flex items-center gap-4 flex-1 mr-4">
                 <div className="bg-slate-800 text-slate-400 px-2 py-1 rounded text-xs font-mono font-bold border border-slate-700 min-w-[3rem] text-center">
                   #{p.code}
                 </div>
-                <div>
-                  <div className="font-bold text-white text-lg">{p.name}</div>
-                  <div className="text-xs text-slate-500 uppercase font-bold flex gap-2 items-center">
-                    <span className="bg-slate-800 px-1.5 rounded">{p.position}</span>
-                    <span className="text-slate-700">•</span>
-                    <span className={getLevelColor(p.level)}>Nível {p.level}</span>
+
+                {editingId === p.id ? (
+                  // MODO EDIÇÃO: Inputs aparecem aqui
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2 w-full animate-in fade-in">
+                    <input 
+                      value={editName} 
+                      onChange={e => setEditName(e.target.value)}
+                      className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-white focus:outline-none w-full"
+                      autoFocus
+                    />
+                    <select 
+                      value={editPosition} 
+                      onChange={e => setEditPosition(e.target.value as Position)}
+                      className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-white focus:outline-none"
+                    >
+                      <option value="Zagueiro">Zagueiro</option>
+                      <option value="Meia">Meia</option>
+                      <option value="Atacante">Atacante</option>
+                    </select>
+                    <div className="flex items-center gap-2">
+                        <input 
+                        type="number" min="1" max="10"
+                        value={editLevel} 
+                        onChange={e => setEditLevel(Number(e.target.value))}
+                        className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-white focus:outline-none w-16 text-center"
+                        />
+                        <span className="text-xs text-blue-400 font-bold">Nível</span>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  // MODO LEITURA: Texto normal
+                  <div>
+                    <div className="font-bold text-white text-lg">{p.name}</div>
+                    <div className="text-xs text-slate-500 uppercase font-bold flex gap-2 items-center">
+                      <span className="bg-slate-800 px-1.5 rounded">{p.position}</span>
+                      <span className="text-slate-700">•</span>
+                      <span className={getLevelColor(p.level)}>Nível {p.level}</span>
+                    </div>
+                  </div>
+                )}
               </div>
+
+              {/* LADO DIREITO: BOTÕES DE AÇÃO */}
               <div className="flex items-center gap-2">
-                <button 
-                  onClick={() => handleEdit(p)} 
-                  className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors" 
-                  title="Editar Jogador"
-                >
-                  <i className="fa-solid fa-pen-to-square text-lg"></i>
-                </button>
-                <button 
-                  onClick={() => handleDelete(p.id)} 
-                  className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" 
-                  title="Excluir Jogador"
-                >
-                  <i className="fa-solid fa-trash"></i>
-                </button>
+                {editingId === p.id ? (
+                  // Botões Salvar/Cancelar
+                  <>
+                    <button 
+                      onClick={saveEditing} 
+                      className="p-2 bg-green-600 hover:bg-green-500 text-white rounded-lg transition-colors shadow-lg" 
+                      title="Salvar Alterações"
+                    >
+                      <i className="fa-solid fa-check"></i>
+                    </button>
+                    <button 
+                      onClick={cancelEditing} 
+                      className="p-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors" 
+                      title="Cancelar"
+                    >
+                      <i className="fa-solid fa-xmark"></i>
+                    </button>
+                  </>
+                ) : (
+                  // Botões Editar/Excluir
+                  <>
+                    <button 
+                      onClick={() => startEditing(p)} 
+                      className="p-2 text-blue-400 hover:bg-blue-400/10 rounded-lg transition-colors" 
+                      title="Editar Jogador"
+                    >
+                      <i className="fa-solid fa-pen-to-square text-lg"></i>
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(p.id)} 
+                      className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors" 
+                      title="Excluir Jogador"
+                    >
+                      <i className="fa-solid fa-trash"></i>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           ))}
