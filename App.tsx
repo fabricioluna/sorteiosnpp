@@ -377,6 +377,13 @@ const App: React.FC = () => {
   const groupableCount = players.filter(p => !p.isFixedInTeam1).length;
   const isLevelBalancingActive = groupableCount > 0 && groupableCount % 5 === 0;
 
+  // Agrupa a Conferência por nível técnico (5 -> 1), pra facilitar visualizar quem está em cada nível
+  // antes mesmo de chegar na tela de grupos de sorteio. Reagrupa em tempo real conforme o nível é editado.
+  const classifyLevelGroups = [5, 4, 3, 2, 1].map(level => ({
+    level,
+    players: players.filter(p => p.level === level),
+  }));
+
   if (isVotingRoute()) {
     return (
       <div className="min-h-screen bg-[#020617] text-gray-100 font-inter p-4">
@@ -591,31 +598,42 @@ const App: React.FC = () => {
                 </p>
               </div>
             )}
-            <div className="divide-y divide-slate-800 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              {players.map((player) => {
-                const isUnclassified = player.position === 'Não definida';
-                return (
-                <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${isUnclassified ? 'bg-red-500/10 border-l-4 border-red-500' : player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
-                  <div className="flex items-center gap-2">
-                    {player.code !== '---' && <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">#{player.code}</span>}
-                    {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
-                    <input type="text" value={player.name} onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })} className={`w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none truncate ${player.isFixedInTeam1 ? 'text-yellow-100' : 'text-white'}`} />
-                    {isUnclassified && <span className="text-[10px] font-bold uppercase text-red-400 border border-red-500/40 rounded px-1.5 py-0.5 flex-none">Sem posição</span>}
+            <div className="max-h-[60vh] overflow-y-auto custom-scrollbar">
+              {classifyLevelGroups.map(group => group.players.length > 0 && (
+                <div key={group.level}>
+                  <div className="sticky top-0 z-10 px-4 md:px-6 py-1.5 bg-slate-800/90 backdrop-blur-sm border-y border-slate-700 flex items-center gap-2">
+                    <span className="w-5 h-5 rounded-full bg-orange-500 text-white flex items-center justify-center text-[10px] font-black">{group.level}</span>
+                    <span className="text-[11px] font-black text-slate-300 uppercase tracking-wider">Nível {group.level}</span>
+                    <span className="text-[10px] text-slate-500 font-bold">({group.players.length})</span>
                   </div>
-                  <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
-                    <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
-                      {positions.map((pos) => (
-                        <button key={pos.id} onClick={() => handleUpdatePlayer(player.id, { position: pos.id })} className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md transition-all duration-200 ${player.position === pos.id ? 'bg-orange-500 text-white shadow-lg scale-105 z-10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'}`}><span className="text-lg md:text-xl">{pos.icon}</span><span className="text-[10px] font-bold uppercase tracking-wider">{pos.label}</span></button>
-                      ))}
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-5)</span>
-                      <StarRating rating={player.level} onChange={(level) => handleUpdatePlayer(player.id, { level })} />
-                    </div>
+                  <div className="divide-y divide-slate-800">
+                    {group.players.map((player) => {
+                      const isUnclassified = player.position === 'Não definida';
+                      return (
+                      <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${isUnclassified ? 'bg-red-500/10 border-l-4 border-red-500' : player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
+                        <div className="flex items-center gap-2">
+                          {player.code !== '---' && <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">#{player.code}</span>}
+                          {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
+                          <input type="text" value={player.name} onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })} className={`w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none truncate ${player.isFixedInTeam1 ? 'text-yellow-100' : 'text-white'}`} />
+                          {isUnclassified && <span className="text-[10px] font-bold uppercase text-red-400 border border-red-500/40 rounded px-1.5 py-0.5 flex-none">Sem posição</span>}
+                        </div>
+                        <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
+                          <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
+                            {positions.map((pos) => (
+                              <button key={pos.id} onClick={() => handleUpdatePlayer(player.id, { position: pos.id })} className={`relative flex items-center gap-1.5 px-3 py-2 rounded-md transition-all duration-200 ${player.position === pos.id ? 'bg-orange-500 text-white shadow-lg scale-105 z-10' : 'text-slate-600 hover:text-slate-300 hover:bg-slate-800'}`}><span className="text-lg md:text-xl">{pos.icon}</span><span className="text-[10px] font-bold uppercase tracking-wider">{pos.label}</span></button>
+                            ))}
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-5)</span>
+                            <StarRating rating={player.level} onChange={(level) => handleUpdatePlayer(player.id, { level })} />
+                          </div>
+                        </div>
+                      </div>
+                      );
+                    })}
                   </div>
                 </div>
-                );
-              })}
+              ))}
             </div>
             <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-800">
               <button onClick={handleSortTeams} disabled={unclassifiedPlayers.length > 0} className="w-full py-4 bg-[#1E3A8A] hover:bg-[#254ab2] disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-700 disabled:border-slate-700">SORTEAR TIMES <i className="fa-solid fa-shuffle"></i></button>

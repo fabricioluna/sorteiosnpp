@@ -137,6 +137,22 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     loadPlayers();
   };
 
+  // Aplica a média dos votos (arredondada ao inteiro mais próximo, igual ao "aplicar ao cadastro"
+  // individual) a todo jogador que tenha ao menos 1 voto. Quem não recebeu voto fica intocado.
+  const handleApplyAllVotes = async () => {
+    const entries = Object.entries(voteSummary);
+    if (entries.length === 0) return;
+    if (!confirm(`Isso vai atualizar nível e posição de ${entries.length} jogador(es) com base na média dos votos (arredondada ao inteiro mais próximo). Continuar?`)) return;
+
+    await Promise.all(entries.map(([playerId, summary]: [string, VoteSummary]) => {
+      const updates: Partial<Player> = { level: Math.round(summary.avgLevel) as Player['level'] };
+      if (summary.topPosition) updates.position = summary.topPosition;
+      return db.updatePlayer(playerId, updates);
+    }));
+
+    loadPlayers();
+  };
+
   const handleClearVotes = async () => {
     if (confirm('Isso vai apagar TODOS os votos registrados. Use antes de começar uma nova rodada de levantamento. Continuar?')) {
       await votesDb.clearAllVotes();
@@ -281,12 +297,24 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             <i className={`fa-solid ${linkCopied ? 'fa-check' : 'fa-link'}`}></i> {linkCopied ? 'Link copiado!' : 'Copiar link de votação'}
           </button>
           <button
+            onClick={handleApplyAllVotes}
+            disabled={Object.keys(voteSummary).length === 0}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:hover:bg-blue-600 text-white font-bold rounded-lg text-sm transition-colors flex items-center gap-2"
+          >
+            <i className="fa-solid fa-users-gear"></i> Atualizar Todos com a Votação
+          </button>
+          <button
             onClick={handleClearVotes}
             className="px-4 py-2 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold rounded-lg text-sm transition-colors flex items-center gap-2 border border-slate-700"
           >
             <i className="fa-solid fa-broom"></i> Zerar Votos
           </button>
         </div>
+        {Object.keys(voteSummary).length > 0 && (
+          <p className="text-xs text-slate-500 mt-3">
+            {Object.keys(voteSummary).length} de {players.length} atletas têm voto registrado. Nível é arredondado ao inteiro mais próximo (ex: média 3.4 → 3; média 3.5 → 4).
+          </p>
+        )}
       </div>
 
       {/* FORMULÁRIO DE CADASTRO */}
