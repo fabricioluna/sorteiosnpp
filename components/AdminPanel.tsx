@@ -108,8 +108,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   };
 
   // Aceita duas formas de linha:
-  //   "Nome Número"  -> usa o número como código real do jogador
-  //   "Nome"         -> gera código temporário sequencial a partir de 900
+  //   "Nome Número"  -> usa o número como código oficial do jogador
+  //   "Nome"         -> gera o próximo código oficial disponível (mesma sequência do cadastro manual, a partir de 001)
   const handleImport = (e: React.FormEvent) => {
     e.preventDefault();
     const lines = importText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
@@ -130,17 +130,19 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         return;
       }
 
-      const code = hasExplicitCode
-        ? lastToken.padStart(3, '0')
-        : db.getNextAvailableTempCode(usedCodes);
-
-      if (usedCodes.has(code)) {
-        errors.push(`"${line}" — código #${code} já está em uso`);
-        return;
+      if (hasExplicitCode) {
+        const code = lastToken.padStart(3, '0');
+        if (usedCodes.has(code)) {
+          errors.push(`"${line}" — código #${code} já está em uso`);
+          return;
+        }
+        db.addPlayerWithCode({ name, code, position: 'Não definida', level: 5 });
+        usedCodes.add(code);
+      } else {
+        const newPlayer = db.addPlayer({ name, position: 'Não definida', level: 5 });
+        usedCodes.add(newPlayer.code);
       }
 
-      db.addPlayerWithCode({ name, code, position: 'Não definida', level: 5 });
-      usedCodes.add(code);
       importedCount++;
     });
 
@@ -248,8 +250,8 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           <i className="fa-solid fa-file-import"></i> Importar Lista
         </h3>
         <p className="text-xs text-slate-500 mb-4">
-          Um jogador por linha. Use <code className="bg-slate-950 px-1 rounded">Nome Número</code> quando souber o código real (ex: "Fabrício 7"),
-          ou apenas <code className="bg-slate-950 px-1 rounded">Nome</code> para gerar um código temporário (900, 901, ...) a ser corrigido depois.
+          Um jogador por linha. Use <code className="bg-slate-950 px-1 rounded">Nome Número</code> quando souber o código do jogador (ex: "Fabrício 7"),
+          ou apenas <code className="bg-slate-950 px-1 rounded">Nome</code> para gerar automaticamente o próximo código oficial disponível.
         </p>
         <form onSubmit={handleImport} className="space-y-3">
           <textarea
