@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Player, Position } from '../types';
+import { Player, Position, Pelada } from '../types';
 import { db } from '../utils/database';
 import { votesDb, summarizeVotes, VoteSummary } from '../utils/votes';
+import { peladasDb } from '../utils/peladas';
 import StarRating from './StarRating';
+import PeladaEditor from './PeladaEditor';
 
 interface AdminPanelProps {
   onBack: () => void;
@@ -36,11 +38,17 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   // Estado para RESULTADOS DA VOTAÇÃO
   const [voteSummary, setVoteSummary] = useState<Record<string, VoteSummary>>({});
   const [linkCopied, setLinkCopied] = useState(false);
+  const [rankingLinkCopied, setRankingLinkCopied] = useState(false);
+
+  // Estado para PELADAS
+  const [peladas, setPeladas] = useState<Pelada[]>([]);
+  const [selectedPelada, setSelectedPelada] = useState<Pelada | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
       loadPlayers();
       loadVoteSummary();
+      loadPeladas();
     }
   }, [isAuthenticated]);
 
@@ -61,6 +69,39 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const loadVoteSummary = async () => {
     const votes = await votesDb.getAllVotes();
     setVoteSummary(summarizeVotes(votes));
+  };
+
+  const loadPeladas = async () => {
+    setPeladas(await peladasDb.getAll());
+  };
+
+  const handleCopyRankingLink = () => {
+    const link = `${window.location.origin}${window.location.pathname}?view=ranking`;
+    navigator.clipboard.writeText(link).then(() => {
+      setRankingLinkCopied(true);
+      setTimeout(() => setRankingLinkCopied(false), 2000);
+    });
+  };
+
+  const handleResetTitles = async () => {
+    if (confirm('Isso vai zerar a contagem de TÍTULOS de todos os jogadores. O histórico de peladas não é apagado. Continuar?')) {
+      await db.resetPlayerStats({ titles: 0 });
+      loadPlayers();
+    }
+  };
+
+  const handleResetGoals = async () => {
+    if (confirm('Isso vai zerar a contagem de GOLS de todos os jogadores. O histórico de peladas não é apagado. Continuar?')) {
+      await db.resetPlayerStats({ goals: 0 });
+      loadPlayers();
+    }
+  };
+
+  const handleResetCards = async () => {
+    if (confirm('Isso vai zerar a contagem de CARTÕES (amarelos e vermelhos) de todos os jogadores. O histórico de peladas não é apagado. Continuar?')) {
+      await db.resetPlayerStats({ yellowCards: 0, redCards: 0 });
+      loadPlayers();
+    }
   };
 
   const handleLogin = (e: React.FormEvent) => {
@@ -267,6 +308,16 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     );
   }
 
+  if (selectedPelada) {
+    return (
+      <PeladaEditor
+        pelada={selectedPelada}
+        onBack={() => setSelectedPelada(null)}
+        onSaved={() => { setSelectedPelada(null); loadPeladas(); loadPlayers(); }}
+      />
+    );
+  }
+
   return (
     <div className="animate-in slide-in-from-right duration-300">
       <div className="flex justify-between items-center mb-6">
@@ -315,6 +366,53 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
             {Object.keys(voteSummary).length} de {players.length} atletas têm voto registrado. Nível é arredondado ao inteiro mais próximo (ex: média 3.4 → 3; média 3.5 → 4).
           </p>
         )}
+      </div>
+
+      {/* PELADAS E RANKING */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8 shadow-xl">
+        <h3 className="text-orange-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-futbol"></i> Peladas & Ranking
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Cada sorteio confirmado salva a pelada do dia como "pendente" automaticamente. Clique numa pelada abaixo para lançar o time campeão e as estatísticas de cada jogador.
+        </p>
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            onClick={handleCopyRankingLink}
+            className="px-4 py-2 bg-orange-600 hover:bg-orange-500 text-white font-bold rounded-lg text-sm transition-colors flex items-center gap-2"
+          >
+            <i className={`fa-solid ${rankingLinkCopied ? 'fa-check' : 'fa-link'}`}></i> {rankingLinkCopied ? 'Link copiado!' : 'Copiar link do Ranking'}
+          </button>
+          <button onClick={handleResetTitles} className="px-3 py-2 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-2 border border-slate-700">
+            <i className="fa-solid fa-broom"></i> Zerar Títulos
+          </button>
+          <button onClick={handleResetGoals} className="px-3 py-2 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-2 border border-slate-700">
+            <i className="fa-solid fa-broom"></i> Zerar Gols
+          </button>
+          <button onClick={handleResetCards} className="px-3 py-2 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-2 border border-slate-700">
+            <i className="fa-solid fa-broom"></i> Zerar Cartões
+          </button>
+        </div>
+
+        <div className="rounded-xl border border-slate-800 overflow-hidden">
+          <div className="divide-y divide-slate-800 max-h-72 overflow-y-auto custom-scrollbar">
+            {peladas.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPelada(p)}
+                className="w-full p-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors text-left"
+              >
+                <span className="text-white font-bold text-sm">{p.date.split('-').reverse().join('/')}</span>
+                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${p.status === 'concluída' ? 'text-green-400 border-green-500/40 bg-green-500/10' : 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10'}`}>
+                  {p.status}
+                </span>
+              </button>
+            ))}
+            {peladas.length === 0 && (
+              <p className="p-6 text-center text-slate-500 text-sm">Nenhuma pelada registrada ainda — confirme um sorteio para gerar a primeira.</p>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* FORMULÁRIO DE CADASTRO */}

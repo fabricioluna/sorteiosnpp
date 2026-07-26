@@ -46,6 +46,8 @@ export const db = {
       level: player.level,
       redCards: 0,
       goals: 0,
+      yellowCards: 0,
+      titles: 0,
     };
 
     const docRef = await addDoc(collection(firestore, PLAYERS_COLLECTION), newPlayerData);
@@ -62,6 +64,8 @@ export const db = {
       level: player.level,
       redCards: 0,
       goals: 0,
+      yellowCards: 0,
+      titles: 0,
     };
 
     const docRef = await addDoc(collection(firestore, PLAYERS_COLLECTION), newPlayerData);
@@ -90,6 +94,14 @@ export const db = {
     const snapshot = await getDocs(collection(firestore, PLAYERS_COLLECTION));
     const batch = writeBatch(firestore);
     snapshot.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  },
+
+  // Zera só o(s) campo(s) agregados indicados em todo jogador — nunca mexe no histórico de peladas.
+  resetPlayerStats: async (fields: Partial<Pick<Player, 'titles' | 'goals' | 'yellowCards' | 'redCards'>>): Promise<void> => {
+    const snapshot = await getDocs(collection(firestore, PLAYERS_COLLECTION));
+    const batch = writeBatch(firestore);
+    snapshot.docs.forEach(d => batch.update(d.ref, fields));
     await batch.commit();
   },
 };

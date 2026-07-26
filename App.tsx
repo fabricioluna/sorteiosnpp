@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams, balanceTeamsByGroups, recommendDrawLevels } from './utils/sorting';
 import { db } from './utils/database';
+import { peladasDb } from './utils/peladas';
 import AdminPanel from './components/AdminPanel';
 import StarRating from './components/StarRating';
 import VotingPage from './components/VotingPage';
+import RankingPage from './components/RankingPage';
 
 const logoSnpp = '/logosnpp.png';
 
 const isVotingRoute = () => new URLSearchParams(window.location.search).get('view') === 'votacao';
+const isRankingRoute = () => new URLSearchParams(window.location.search).get('view') === 'ranking';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'sorteio' | 'admin'>('sorteio');
@@ -290,6 +293,9 @@ const App: React.FC = () => {
     setTeams(result);
     setStep('results');
     setShowQuickRegister(false);
+    // Salva o rascunho da pelada do dia (times sorteados) pro Admin lançar o resultado depois.
+    // Não bloqueia a tela em caso de falha — o sorteio já foi mostrado normalmente.
+    peladasDb.saveDraft(matchDate, result).catch(e => console.error('Não foi possível salvar a pelada do dia', e));
   };
 
   // Funções Auxiliares de Cadastro
@@ -388,6 +394,14 @@ const App: React.FC = () => {
     return (
       <div className="min-h-screen bg-[#020617] text-gray-100 font-inter p-4">
         <div className="max-w-2xl mx-auto"><VotingPage /></div>
+      </div>
+    );
+  }
+
+  if (isRankingRoute()) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-gray-100 font-inter p-4">
+        <div className="max-w-2xl mx-auto"><RankingPage /></div>
       </div>
     );
   }
@@ -494,7 +508,7 @@ const App: React.FC = () => {
                     <i className="fa-solid fa-user-plus text-orange-500"></i>
                     Novos Jogadores ({tempPlayersToRegister.length})
                   </h2>
-                  <p className="text-slate-400 text-sm mt-1">Cadastre-os agora para gerar o código #ID permanente.</p>
+                  <p className="text-slate-400 text-sm mt-1">Cadastro obrigatório antes de sortear — todo convidado precisa de um número, mesmo quem só vem uma vez.</p>
                 </div>
                 {tempPlayersToRegister.length > 1 && (
                   <button onClick={handleSaveAll} className="bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 px-4 rounded-xl shadow-lg flex items-center gap-2 text-sm transition-all">
@@ -515,8 +529,14 @@ const App: React.FC = () => {
               )}
             </div>
             <div className="p-6 border-t border-slate-800 bg-slate-950 rounded-b-2xl flex justify-between gap-4">
-              <button onClick={() => checkForModifications()} className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-colors">Pular Restantes e Sortear</button>
-              {tempPlayersToRegister.length === 0 && <button onClick={() => checkForModifications()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>}
+              {tempPlayersToRegister.length === 0 ? (
+                <button onClick={() => checkForModifications()} className="flex-1 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg transition-colors animate-pulse">Concluir e Sortear</button>
+              ) : (
+                <p className="flex-1 text-center text-xs text-slate-500 py-3">
+                  <i className="fa-solid fa-lock mr-1.5"></i>
+                  Cadastre {tempPlayersToRegister.length === 1 ? 'o jogador acima' : 'todos os jogadores acima'} para liberar o sorteio.
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -781,7 +801,10 @@ const App: React.FC = () => {
         )}
       </main>
       <footer className="mt-12 text-center px-4 pb-8 flex flex-col gap-6 items-center">
-        <button onClick={() => setCurrentView('admin')} className="text-slate-600 hover:text-orange-500 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"><i className="fa-solid fa-lock"></i> Acesso Restrito (Admin)</button>
+        <div className="flex flex-wrap justify-center gap-4">
+          <a href="?view=ranking" className="text-slate-600 hover:text-orange-500 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"><i className="fa-solid fa-trophy"></i> Ranking</a>
+          <button onClick={() => setCurrentView('admin')} className="text-slate-600 hover:text-orange-500 text-xs font-bold uppercase tracking-widest transition-colors flex items-center gap-2"><i className="fa-solid fa-lock"></i> Acesso Restrito (Admin)</button>
+        </div>
         <div className="inline-block relative group">
           <div className="absolute -inset-1 bg-gradient-to-r from-orange-500 to-blue-600 rounded-lg blur opacity-25 group-hover:opacity-50 transition duration-1000 group-hover:duration-200"></div>
           <p className="relative text-orange-500 font-black text-xl md:text-2xl tracking-tighter uppercase italic drop-shadow-[0_2px_10px_rgba(249,115,22,0.3)] animate-pulse-slow">Desenvolvido por Fabrício Luna</p>
