@@ -59,10 +59,16 @@ const App: React.FC = () => {
   }, [players, step, teams, matchDate]);
 
   // --- AUXILIAR ---
+  // Em cada linha, o código do jogador (se houver) é o último token, sem # e sem zeros à esquerda.
+  const getLineCode = (line: string): number | null => {
+    const tokens = line.trim().split(/\s+/);
+    const lastToken = tokens[tokens.length - 1];
+    return tokens.length > 1 && /^\d+$/.test(lastToken) ? parseInt(lastToken, 10) : null;
+  };
+
   const extractUsedCodes = (): number[] => {
-    const allText = championText + '\n' + rawText;
-    const matches = allText.match(/#\s*(\d+)/g);
-    return matches ? matches.map(m => parseInt(m.replace(/[^0-9]/g, ''), 10)) : [];
+    const allLines = (championText + '\n' + rawText).split('\n');
+    return allLines.map(getLineCode).filter((code): code is number => code !== null);
   };
 
   const countLines = (text: string) => {
@@ -90,18 +96,20 @@ const App: React.FC = () => {
         alert("O Time Campeão já tem 5 atletas.");
         return;
       }
-      setChampionText(prev => (prev.trim() + `\n${player.name} #${player.code}`).trim());
+      setChampionText(prev => (prev.trim() + `\n${player.name} ${parseInt(player.code, 10)}`).trim());
     } else if (showPlayerSelector === 'general') {
-      setRawText(prev => (prev.trim() + `\n${player.name} #${player.code}`).trim());
+      setRawText(prev => (prev.trim() + `\n${player.name} ${parseInt(player.code, 10)}`).trim());
     }
   };
 
   const handleRemovePlayerFromList = (player: Player) => {
-    const regex = new RegExp(`.*#\\s*${player.code}.*\\n?`, 'gi');
+    const numCode = parseInt(player.code, 10);
+    const removeLine = (text: string) => text.split('\n').filter(line => getLineCode(line) !== numCode).join('\n');
+
     if (showPlayerSelector === 'champion') {
-      setChampionText(prev => prev.replace(regex, '').trim());
+      setChampionText(prev => removeLine(prev).trim());
     } else if (showPlayerSelector === 'general') {
-      setRawText(prev => prev.replace(regex, '').trim());
+      setRawText(prev => removeLine(prev).trim());
     }
   };
 
@@ -118,9 +126,11 @@ const App: React.FC = () => {
     const findByName = (name: string) => allDbPlayers.find(p => p.name.toLowerCase() === name.toLowerCase());
 
     const getPlayerData = (lineText: string, isChamp: boolean) => {
-      const codeMatch = lineText.match(/#\s*(\d+)/);
-      const extractedCode = codeMatch ? codeMatch[1] : null;
-      const cleanName = lineText.replace(/#\s*\d+/, '').trim();
+      const tokens = lineText.trim().split(/\s+/);
+      const lastToken = tokens[tokens.length - 1];
+      const hasCode = tokens.length > 1 && /^\d+$/.test(lastToken);
+      const extractedCode = hasCode ? lastToken : null;
+      const cleanName = hasCode ? tokens.slice(0, -1).join(' ') : lineText.trim();
 
       let dbPlayer: Player | undefined;
 
@@ -483,7 +493,7 @@ const App: React.FC = () => {
                     <i className="fa-solid fa-list"></i> Inserir do Cadastro
                   </button>
                 </div>
-                <textarea className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20" placeholder="Cole aqui os 5 nomes... (ex: Nome #001)" value={championText} onChange={(e) => setChampionText(e.target.value)} />
+                <textarea className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20" placeholder="Cole aqui os 5 nomes... (ex: Nome 7)" value={championText} onChange={(e) => setChampionText(e.target.value)} />
               </div>
             )}
             <div className="mb-6">
@@ -493,7 +503,7 @@ const App: React.FC = () => {
                   <i className="fa-solid fa-list"></i> Inserir do Cadastro
                 </button>
               </div>
-              <p className="text-xs text-slate-500 mb-2">* Dica: Digite "Apelido #001" para puxar o cadastro do jogador 001 automaticamente.</p>
+              <p className="text-xs text-slate-500 mb-2">* Dica: Digite "Apelido 7" para puxar o cadastro do jogador #007 automaticamente.</p>
               <textarea className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700" placeholder={useChampionMode ? "Cole aqui os outros jogadores..." : "Cole a lista completa..."} value={rawText} onChange={(e) => setRawText(e.target.value)} />
             </div>
             <button onClick={handleGenerateList} disabled={!rawText.trim()} className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-2">INICIAR CONVOCAÇÃO <i className="fa-solid fa-arrow-right"></i></button>

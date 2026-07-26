@@ -15,7 +15,7 @@ const StarRating: React.FC<StarRatingProps> = ({ rating, onChange }) => {
           type="button"
           onClick={() => onChange(star)}
           className={`text-xl transition-all hover:scale-110 active:scale-90 ${
-            star <= rating ? 'text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'text-slate-800'
+            star <= rating ? 'text-orange-500 drop-shadow-[0_0_8px_rgba(249,115,22,0.4)]' : 'text-slate-500 hover:text-orange-300'
           }`}
         >
           <i className={`fa-star ${star <= rating ? 'fa-solid' : 'fa-regular'}`}></i>
