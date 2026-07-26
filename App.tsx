@@ -153,7 +153,9 @@ const App: React.FC = () => {
         id: `temp-${Date.now()}-${Math.random()}`,
         code: extractedCode || '---',
         name: cleanName,
-        position: 'Meia' as Position,
+        // Sem posição definida de propósito: jogador novo precisa ser classificado
+        // (posição + nível) antes do sorteio — ver validação em handleSortTeams.
+        position: 'Não definida' as Position,
         level: isChamp ? 5 : 3,
         redCards: 0,
         goals: 0,
@@ -186,8 +188,19 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
-  // --- SORTEIO: PASSO 1 (Verificar Convidados) ---
+  // --- SORTEIO: PASSO 0 (Regra 0 — bloquear jogador sem posição/nível definido) ---
   const handleSortTeams = () => {
+    const unclassified = players.filter(p => p.position === 'Não definida');
+    if (unclassified.length > 0) {
+      alert(
+        `Defina a posição (e revise o nível) de ${unclassified.length} jogador(es) antes de sortear:\n` +
+        `${unclassified.map(p => p.name).join(', ')}\n\n` +
+        `Ajuste direto na lista acima, ou use a página de votação para avaliar em grupo.`
+      );
+      return;
+    }
+
+    // --- SORTEIO: PASSO 1 (Verificar Convidados) ---
     const tempPlayers = players.filter(p => p.code === '---');
     if (tempPlayers.length > 0) {
       setTempPlayersToRegister(tempPlayers);
@@ -355,6 +368,14 @@ const App: React.FC = () => {
   }));
   const isDrawGroupsBalanced = drawLevelGroups.every(g => g.players.length === expectedDrawGroupSize);
   const championsForGroupsScreen = players.filter(p => p.isFixedInTeam1);
+
+  // Regra 0: jogador sem posição definida não pode ser convocado.
+  const unclassifiedPlayers = players.filter(p => p.position === 'Não definida');
+
+  // Regra 0.1: só ativa o balanceamento por níveis quando o grupo "livre" (fora dos campeões fixos)
+  // fecha em múltiplo de 5 — senão mantém o algoritmo guloso padrão.
+  const groupableCount = players.filter(p => !p.isFixedInTeam1).length;
+  const isLevelBalancingActive = groupableCount > 0 && groupableCount % 5 === 0;
 
   if (isVotingRoute()) {
     return (
@@ -552,17 +573,34 @@ const App: React.FC = () => {
             <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
               <div className="flex items-center gap-4 w-full md:w-auto">
                 <button onClick={() => setStep('input')} className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"><i className="fa-solid fa-arrow-left"></i> Voltar</button>
-                <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">Conferência ({players.length})</h2>
+                <div>
+                  <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">Conferência ({players.length})</h2>
+                  <span className={`inline-flex items-center gap-1.5 mt-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${isLevelBalancingActive ? 'text-orange-400 border-orange-500/40 bg-orange-500/10' : 'text-slate-400 border-slate-700 bg-slate-800'}`}>
+                    <i className={`fa-solid ${isLevelBalancingActive ? 'fa-scale-balanced' : 'fa-dice'}`}></i>
+                    {isLevelBalancingActive ? 'Balanceamento por Níveis' : 'Balanceamento Padrão'}
+                  </span>
+                </div>
               </div>
               <button onClick={handleReset} className="text-slate-500 hover:text-red-400 text-xs md:text-sm font-bold uppercase tracking-wider flex items-center gap-1 transition-colors"><i className="fa-solid fa-trash"></i> Limpar Tudo</button>
             </div>
+            {unclassifiedPlayers.length > 0 && (
+              <div className="p-4 md:p-6 bg-red-500/10 border-b border-red-500/30">
+                <p className="text-sm text-red-300">
+                  <i className="fa-solid fa-triangle-exclamation mr-2"></i>
+                  <strong>{unclassifiedPlayers.length} jogador(es) sem posição definida</strong> — defina a posição (e revise o nível) de cada um destacado abaixo antes de sortear. Para avaliar vários de uma vez, use a página de votação.
+                </p>
+              </div>
+            )}
             <div className="divide-y divide-slate-800 max-h-[60vh] overflow-y-auto custom-scrollbar">
-              {players.map((player) => (
-                <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
+              {players.map((player) => {
+                const isUnclassified = player.position === 'Não definida';
+                return (
+                <div key={player.id} className={`p-3 md:p-4 flex flex-col gap-3 transition-colors ${isUnclassified ? 'bg-red-500/10 border-l-4 border-red-500' : player.isFixedInTeam1 ? 'bg-yellow-500/10 border-l-4 border-yellow-500' : 'hover:bg-slate-800/50'}`}>
                   <div className="flex items-center gap-2">
                     {player.code !== '---' && <span className="text-[10px] font-mono font-bold bg-slate-800 text-slate-400 px-1.5 py-0.5 rounded border border-slate-700">#{player.code}</span>}
                     {player.isFixedInTeam1 && <i className="fa-solid fa-crown text-yellow-500" title="Campeão Atual"></i>}
                     <input type="text" value={player.name} onChange={(e) => handleUpdatePlayer(player.id, { name: e.target.value })} className={`w-full bg-transparent font-bold text-lg border-b border-transparent focus:border-orange-500 outline-none truncate ${player.isFixedInTeam1 ? 'text-yellow-100' : 'text-white'}`} />
+                    {isUnclassified && <span className="text-[10px] font-bold uppercase text-red-400 border border-red-500/40 rounded px-1.5 py-0.5 flex-none">Sem posição</span>}
                   </div>
                   <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-4">
                     <div className="flex bg-slate-950 rounded-lg p-1 border border-slate-800 overflow-x-auto">
@@ -576,10 +614,11 @@ const App: React.FC = () => {
                     </div>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
             <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-800">
-              <button onClick={handleSortTeams} className="w-full py-4 bg-[#1E3A8A] hover:bg-[#254ab2] text-white font-bold rounded-xl shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-700">SORTEAR TIMES <i className="fa-solid fa-shuffle"></i></button>
+              <button onClick={handleSortTeams} disabled={unclassifiedPlayers.length > 0} className="w-full py-4 bg-[#1E3A8A] hover:bg-[#254ab2] disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-700 disabled:border-slate-700">SORTEAR TIMES <i className="fa-solid fa-shuffle"></i></button>
             </div>
           </div>
         )}
@@ -655,7 +694,14 @@ const App: React.FC = () => {
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-slate-900 p-6 rounded-2xl shadow-xl border-l-4 border-orange-500 border border-slate-800 relative">
-               <div className="w-full md:w-auto text-center md:text-left"><h2 className="text-2xl font-black text-white italic">Times Definidos!</h2><p className="text-slate-400 text-sm">Prontos para o jogo.</p></div>
+               <div className="w-full md:w-auto text-center md:text-left">
+                 <h2 className="text-2xl font-black text-white italic">Times Definidos!</h2>
+                 <p className="text-slate-400 text-sm">Prontos para o jogo.</p>
+                 <span className={`inline-flex items-center gap-1.5 mt-2 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${drawGroups.length > 0 ? 'text-orange-400 border-orange-500/40 bg-orange-500/10' : 'text-slate-400 border-slate-700 bg-slate-800'}`}>
+                   <i className={`fa-solid ${drawGroups.length > 0 ? 'fa-scale-balanced' : 'fa-dice'}`}></i>
+                   {drawGroups.length > 0 ? 'Balanceamento por Níveis' : 'Balanceamento Padrão'}
+                 </span>
+               </div>
                <div className="flex flex-col md:flex-row gap-3 w-full md:w-auto">
                  <button onClick={handleReset} className="px-4 py-3 text-red-400 hover:text-red-300 hover:bg-red-400/10 font-bold rounded-xl border border-red-400/30 transition-all flex items-center justify-center gap-2 text-sm uppercase tracking-wide"><i className="fa-solid fa-trash"></i> Limpar Tudo</button>
                  <button onClick={handleCopyTeams} className="px-6 py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg shadow-green-500/20 transition-all flex items-center justify-center gap-2"><i className="fa-brands fa-whatsapp"></i> Copiar Resultado</button>
