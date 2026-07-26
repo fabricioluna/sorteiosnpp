@@ -648,7 +648,10 @@ const App: React.FC = () => {
                 <button onClick={() => setStep('classify')} className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"><i className="fa-solid fa-arrow-left"></i> Voltar</button>
                 <div>
                   <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">Grupos de Nível de Sorteio</h2>
-                  <p className="text-xs text-slate-500">Ajuste se discordar da recomendação. Cada grupo precisa de exatamente {expectedDrawGroupSize} jogadores.</p>
+                  <p className="text-xs text-slate-500">
+                    Ajuste se discordar da recomendação. Cada grupo precisa de exatamente {expectedDrawGroupSize} jogadores.
+                    {' '}<span className="text-green-400"><i className="fa-solid fa-arrow-up"></i> promovido</span> ou <span className="text-orange-400"><i className="fa-solid fa-arrow-down"></i> rebaixado</span> vale só para esse sorteio — o nível cadastrado do jogador não muda.
+                  </p>
                 </div>
               </div>
             </div>
@@ -677,11 +680,24 @@ const App: React.FC = () => {
                       <span className={`text-xs font-bold ${isGroupBalanced ? 'text-slate-500' : 'text-red-400'}`}>{group.players.length}/{expectedDrawGroupSize}</span>
                     </div>
                     <div className="space-y-2">
-                      {group.players.map(player => (
+                      {group.players.map(player => {
+                        const drawLevel = player.drawLevel ?? group.level;
+                        const hasChanged = drawLevel !== player.level;
+                        const isPromoted = drawLevel > player.level;
+                        return (
                         <div key={player.id} className="flex items-center justify-between gap-3 bg-slate-900 rounded-lg p-2 border border-slate-800">
                           <div className="min-w-0">
                             <div className="font-bold text-white text-sm truncate">{player.name}</div>
-                            <div className="text-[10px] text-slate-500 uppercase font-bold">{player.position} · nível cadastrado {player.level}</div>
+                            <div className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 flex-wrap">
+                              <span>{player.position}</span>
+                              <span className="text-slate-700">•</span>
+                              <span className="text-slate-500">Cadastro <span className="text-slate-300">{player.level}</span></span>
+                              <i className="fa-solid fa-arrow-right-long text-slate-700 text-[9px]"></i>
+                              <span className={`flex items-center gap-1 ${hasChanged ? (isPromoted ? 'text-green-400' : 'text-orange-400') : 'text-slate-500'}`}>
+                                Sorteio <span className={hasChanged ? '' : 'text-slate-300'}>{drawLevel}</span>
+                                {hasChanged && <i className={`fa-solid ${isPromoted ? 'fa-arrow-up' : 'fa-arrow-down'}`} title={isPromoted ? 'Promovido só para esse sorteio' : 'Rebaixado só para esse sorteio'}></i>}
+                              </span>
+                            </div>
                           </div>
                           <div className="flex gap-1 flex-none">
                             {[1, 2, 3, 4, 5].map(lvl => (
@@ -689,7 +705,8 @@ const App: React.FC = () => {
                             ))}
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                       {group.players.length === 0 && (
                         <p className="text-xs text-slate-600 text-center py-2">Nenhum jogador nesse grupo.</p>
                       )}
