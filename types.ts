@@ -11,6 +11,7 @@ export interface Player {
   // Propriedades usadas apenas durante o sorteio
   isFixedInTeam1?: boolean;
   isPresent?: boolean; // Para marcar presença na lista do sorteio
+  drawLevel?: number; // Nível de sorteio (1-5), temporário: só existe durante a confirmação dos grupos, nunca é salvo no cadastro
 }
 
 export interface Team {
@@ -20,7 +21,7 @@ export interface Team {
   totalLevel: number;
 }
 
-export type AppStep = 'input' | 'classify' | 'results';
+export type AppStep = 'input' | 'classify' | 'groups' | 'results';
 
 // Voto de um jogador sobre o nível/posição de outro jogador (levantamento para a diretoria)
 export interface Vote {

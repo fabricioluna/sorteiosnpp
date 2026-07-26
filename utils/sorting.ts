@@ -1,4 +1,4 @@
-import { Player, Team } from '../types';
+import { Player, Position, Team } from '../types';
 
 /**
  * Standard Fisher-Yates shuffle to introduce randomness
@@ -10,6 +10,38 @@ const shuffle = <T>(array: T[]): T[] => {
     [result[i], result[j]] = [result[j], result[i]];
   }
   return result;
+};
+
+// Ordem fixa de desempate por posição, para o ranking ser sempre o mesmo dado o mesmo grupo de jogadores.
+const POSITION_TIEBREAK_ORDER: Record<Position, number> = {
+  'Zagueiro': 0,
+  'Meia': 1,
+  'Atacante': 2,
+  'Não definida': 3,
+};
+
+/**
+ * Reclassifica um grupo de jogadores em "níveis de sorteio" (1 a 5), em blocos de tamanho igual.
+ * Não altera o nível cadastrado (`level`) — só define `drawLevel`, usado apenas nesse sorteio.
+ * O grupo precisa ter um tamanho múltiplo de 5 (ex: 20 jogadores -> 5 blocos de 4).
+ */
+export const recommendDrawLevels = (players: Player[]): Player[] => {
+  const groupSize = players.length / 5;
+  if (!Number.isInteger(groupSize) || groupSize <= 0) {
+    throw new Error('A quantidade de jogadores precisa ser múltipla de 5 para recomendar os grupos de sorteio.');
+  }
+
+  const ranked = [...players].sort((a, b) => {
+    if (b.level !== a.level) return b.level - a.level;
+    const posDiff = POSITION_TIEBREAK_ORDER[a.position] - POSITION_TIEBREAK_ORDER[b.position];
+    if (posDiff !== 0) return posDiff;
+    return a.name.localeCompare(b.name);
+  });
+
+  return ranked.map((player, idx) => ({
+    ...player,
+    drawLevel: 5 - Math.floor(idx / groupSize),
+  }));
 };
 
 /**
@@ -80,6 +112,52 @@ export const balanceTeams = (players: Player[]): Team[] => {
   // 5. Positional refinement (Only for non-fixed teams usually, but let's run generally)
   // We avoid swapping players from Team 1 if they are fixed champions
   refinePositions(teams);
+
+  return teams;
+};
+
+/**
+ * Sorteia os times a partir de grupos de "nível de sorteio" já confirmados (ver recommendDrawLevels).
+ * Para cada grupo (mesmo drawLevel), embaralha e distribui 1 jogador para cada time que ainda não tem
+ * campeões fixos — garantindo que cada time receba exatamente 1 jogador de cada nível de sorteio.
+ * Jogadores fixos (campeões) vão inteiros para o Time 1, fora da lógica de níveis.
+ */
+export const balanceTeamsByGroups = (players: Player[]): Team[] => {
+  const teams: Team[] = [
+    { id: 1, name: 'Time 1', players: [], totalLevel: 0 },
+    { id: 2, name: 'Time 2', players: [], totalLevel: 0 },
+    { id: 3, name: 'Time 3', players: [], totalLevel: 0 },
+    { id: 4, name: 'Time 4', players: [], totalLevel: 0 },
+  ];
+
+  const fixedPlayers = players.filter(p => p.isFixedInTeam1);
+  const groupedPlayers = players.filter(p => !p.isFixedInTeam1);
+
+  let destinationTeams = teams;
+  if (fixedPlayers.length > 0) {
+    teams[0].players = [...fixedPlayers];
+    teams[0].totalLevel = fixedPlayers.reduce((sum, p) => sum + p.level, 0);
+    teams[0].name = 'Time 1 (Atual Campeão)';
+    destinationTeams = teams.slice(1);
+  }
+
+  const byDrawLevel = new Map<number, Player[]>();
+  groupedPlayers.forEach(p => {
+    const level = p.drawLevel ?? 0;
+    if (!byDrawLevel.has(level)) byDrawLevel.set(level, []);
+    byDrawLevel.get(level)!.push(p);
+  });
+
+  [...byDrawLevel.entries()]
+    .sort((a, b) => b[0] - a[0])
+    .forEach(([, group]) => {
+      shuffle(group).forEach((player, idx) => {
+        const team = destinationTeams[idx];
+        if (!team) return; // grupo maior do que o número de times disponíveis; não deveria acontecer se a tela de confirmação validou certo
+        team.players.push(player);
+        team.totalLevel += player.level;
+      });
+    });
 
   return teams;
 };

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
-import { balanceTeams } from './utils/sorting';
+import { balanceTeams, balanceTeamsByGroups, recommendDrawLevels } from './utils/sorting';
 import { db } from './utils/database';
 import AdminPanel from './components/AdminPanel';
 import StarRating from './components/StarRating';
@@ -21,6 +21,7 @@ const App: React.FC = () => {
   
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [drawGroups, setDrawGroups] = useState<Player[]>([]);
 
   // --- ESTADOS PARA MODAIS ---
   const [showQuickRegister, setShowQuickRegister] = useState(false);
@@ -39,12 +40,14 @@ const App: React.FC = () => {
     const savedStep = localStorage.getItem('snpp_step');
     const savedTeams = localStorage.getItem('snpp_teams');
     const savedMatchDate = localStorage.getItem('snpp_match_date');
+    const savedDrawGroups = localStorage.getItem('snpp_draw_groups');
 
     if (savedPlayers) {
       const parsed = JSON.parse(savedPlayers);
       if (parsed.length > 0) setPlayers(parsed);
     }
     if (savedTeams) setTeams(JSON.parse(savedTeams));
+    if (savedDrawGroups) setDrawGroups(JSON.parse(savedDrawGroups));
     if (savedStep && savedPlayers && JSON.parse(savedPlayers).length > 0) {
       setStep(savedStep as AppStep);
     }
@@ -56,7 +59,8 @@ const App: React.FC = () => {
     localStorage.setItem('snpp_step', step);
     localStorage.setItem('snpp_teams', JSON.stringify(teams));
     localStorage.setItem('snpp_match_date', matchDate);
-  }, [players, step, teams, matchDate]);
+    localStorage.setItem('snpp_draw_groups', JSON.stringify(drawGroups));
+  }, [players, step, teams, matchDate, drawGroups]);
 
   // --- AUXILIAR ---
   // Em cada linha, o código do jogador (se houver) é o último token, sem # e sem zeros à esquerda.
@@ -218,7 +222,7 @@ const App: React.FC = () => {
       setUpdateAuthPassword('');
       setShowUpdateAuth(true); // Abre o modal de senha
     } else {
-      finalSort(); // Tudo ok, sorteia
+      prepareGroups(); // Tudo ok, monta os grupos de nível de sorteio
     }
   };
 
@@ -239,18 +243,37 @@ const App: React.FC = () => {
     ));
 
     setShowUpdateAuth(false);
-    finalSort();
+    prepareGroups();
   };
 
   const skipUpdatesAndSort = () => {
     if (confirm('Atenção: As alterações feitas NÃO serão salvas no cadastro para a próxima pelada. Deseja continuar apenas com o sorteio?')) {
       setShowUpdateAuth(false);
-      finalSort();
+      prepareGroups();
     }
   };
 
-  const finalSort = () => {
-    const result = balanceTeams(players);
+  // --- SORTEIO: PASSO 4 (Recomendar grupos de nível de sorteio) ---
+  // Jogadores fixos (campeões) ficam fora da reclassificação — eles já têm time definido.
+  // Só é possível recomendar grupos quando a quantidade de jogadores "livres" é múltiplo de 5;
+  // caso contrário (grupo do dia incompleto), cai de volta no sorteio antigo por soma de nível.
+  const prepareGroups = () => {
+    const groupablePlayers = players.filter(p => !p.isFixedInTeam1);
+    if (groupablePlayers.length % 5 !== 0 || groupablePlayers.length === 0) {
+      setDrawGroups([]);
+      finalSort([]);
+      return;
+    }
+    setDrawGroups(recommendDrawLevels(groupablePlayers));
+    setStep('groups');
+    setShowQuickRegister(false);
+  };
+
+  const finalSort = (groups: Player[]) => {
+    const fixedPlayers = players.filter(p => p.isFixedInTeam1);
+    const result = groups.length > 0
+      ? balanceTeamsByGroups([...fixedPlayers, ...groups])
+      : balanceTeams(players);
     setTeams(result);
     setStep('results');
     setShowQuickRegister(false);
@@ -285,9 +308,11 @@ const App: React.FC = () => {
       setStep('input');
       setPlayers([]);
       setTeams([]);
+      setDrawGroups([]);
       localStorage.removeItem('snpp_players');
       localStorage.removeItem('snpp_step');
       localStorage.removeItem('snpp_teams');
+      localStorage.removeItem('snpp_draw_groups');
       setRawText('');
       setChampionText('');
     }
@@ -318,6 +343,18 @@ const App: React.FC = () => {
     if (level >= 3) return 'text-yellow-400';
     return 'text-red-400';
   };
+
+  const handleMoveToDrawGroup = (playerId: string, newDrawLevel: number) => {
+    setDrawGroups(prev => prev.map(p => p.id === playerId ? { ...p, drawLevel: newDrawLevel } : p));
+  };
+
+  const expectedDrawGroupSize = drawGroups.length / 5;
+  const drawLevelGroups = [5, 4, 3, 2, 1].map(level => ({
+    level,
+    players: drawGroups.filter(p => p.drawLevel === level),
+  }));
+  const isDrawGroupsBalanced = drawLevelGroups.every(g => g.players.length === expectedDrawGroupSize);
+  const championsForGroupsScreen = players.filter(p => p.isFixedInTeam1);
 
   if (isVotingRoute()) {
     return (
@@ -547,6 +584,73 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {step === 'groups' && (
+          <div className="bg-slate-900 rounded-2xl shadow-2xl overflow-hidden border border-slate-800 animate-in fade-in slide-in-from-right-4 duration-300">
+            <div className="p-4 md:p-6 bg-slate-900/50 border-b border-slate-800 flex flex-col md:flex-row justify-between items-center gap-4 sticky top-0 z-20 backdrop-blur-md">
+              <div className="flex items-center gap-4 w-full md:w-auto">
+                <button onClick={() => setStep('classify')} className="bg-slate-800 hover:bg-slate-700 text-white px-3 py-2 rounded-lg text-xs md:text-sm font-bold flex items-center gap-2 transition-colors border border-slate-700"><i className="fa-solid fa-arrow-left"></i> Voltar</button>
+                <div>
+                  <h2 className="text-lg md:text-xl font-bold text-white whitespace-nowrap">Grupos de Nível de Sorteio</h2>
+                  <p className="text-xs text-slate-500">Ajuste se discordar da recomendação. Cada grupo precisa de exatamente {expectedDrawGroupSize} jogadores.</p>
+                </div>
+              </div>
+            </div>
+
+            {championsForGroupsScreen.length > 0 && (
+              <div className="p-4 md:p-6 border-b border-slate-800 bg-yellow-500/5">
+                <h3 className="text-xs font-bold text-yellow-500 uppercase tracking-wider mb-2 flex items-center gap-2"><i className="fa-solid fa-crown"></i> Time 1 (Campeão) — já definido, fora do sorteio</h3>
+                <div className="flex flex-wrap gap-2">
+                  {championsForGroupsScreen.map(p => (
+                    <span key={p.id} className="text-xs bg-slate-800 text-yellow-100 px-2 py-1 rounded border border-yellow-500/30">{p.name}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="p-4 md:p-6 space-y-4 max-h-[55vh] overflow-y-auto custom-scrollbar">
+              {drawLevelGroups.map(group => {
+                const isGroupBalanced = group.players.length === expectedDrawGroupSize;
+                return (
+                  <div key={group.level} className={`rounded-xl border p-3 md:p-4 ${isGroupBalanced ? 'border-slate-800 bg-slate-950' : 'border-red-500/50 bg-red-500/5'}`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <h3 className="font-black text-white text-sm uppercase tracking-wider flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-full bg-orange-500 text-white flex items-center justify-center text-xs">{group.level}</span>
+                        Nível de Sorteio {group.level}
+                      </h3>
+                      <span className={`text-xs font-bold ${isGroupBalanced ? 'text-slate-500' : 'text-red-400'}`}>{group.players.length}/{expectedDrawGroupSize}</span>
+                    </div>
+                    <div className="space-y-2">
+                      {group.players.map(player => (
+                        <div key={player.id} className="flex items-center justify-between gap-3 bg-slate-900 rounded-lg p-2 border border-slate-800">
+                          <div className="min-w-0">
+                            <div className="font-bold text-white text-sm truncate">{player.name}</div>
+                            <div className="text-[10px] text-slate-500 uppercase font-bold">{player.position} · nível cadastrado {player.level}</div>
+                          </div>
+                          <div className="flex gap-1 flex-none">
+                            {[1, 2, 3, 4, 5].map(lvl => (
+                              <button key={lvl} onClick={() => handleMoveToDrawGroup(player.id, lvl)} className={`w-7 h-7 rounded text-xs font-bold transition-all ${lvl === group.level ? 'bg-orange-500 text-white' : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-300'}`}>{lvl}</button>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                      {group.players.length === 0 && (
+                        <p className="text-xs text-slate-600 text-center py-2">Nenhum jogador nesse grupo.</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="p-4 md:p-6 bg-slate-900 border-t border-slate-800">
+              {!isDrawGroupsBalanced && (
+                <p className="text-xs text-red-400 font-bold text-center mb-3"><i className="fa-solid fa-triangle-exclamation mr-1"></i> Ajuste os grupos: cada um precisa de exatamente {expectedDrawGroupSize} jogadores antes de sortear.</p>
+              )}
+              <button onClick={() => finalSort(drawGroups)} disabled={!isDrawGroupsBalanced} className="w-full py-4 bg-[#1E3A8A] hover:bg-[#254ab2] disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-blue-500/10 transition-all active:scale-95 flex items-center justify-center gap-2 border border-blue-700 disabled:border-slate-700">CONFIRMAR E SORTEAR <i className="fa-solid fa-shuffle"></i></button>
+            </div>
+          </div>
+        )}
+
         {/* ... (STEP RESULTS - MANTIDO IGUAL) ... */}
         {step === 'results' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -589,7 +693,7 @@ const App: React.FC = () => {
               })}
             </div>
             <div className="flex flex-col gap-3 pt-4">
-               <button onClick={() => setTeams(balanceTeams(players))} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-rotate-right"></i> Refazer Sorteio</button>
+               <button onClick={() => finalSort(drawGroups)} className="w-full py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl border border-slate-700 transition-all flex items-center justify-center gap-2"><i className="fa-solid fa-rotate-right"></i> Refazer Sorteio</button>
                <button onClick={() => setStep('classify')} className="w-full py-3 text-slate-400 hover:text-white font-bold transition-colors text-sm">Voltar e Editar Jogadores</button>
             </div>
           </div>
