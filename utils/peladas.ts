@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, increment } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
 import { firestore } from './firebase';
 import { Pelada, PeladaTeam, PeladaPlayerResult, Team } from '../types';
 
@@ -51,6 +51,12 @@ export const peladasDb = {
   getById: async (date: string): Promise<Pelada | undefined> => {
     const snapshot = await getDoc(doc(firestore, PELADAS_COLLECTION, date));
     return snapshot.exists() ? { ...(snapshot.data() as Omit<Pelada, 'id'>), id: snapshot.id } : undefined;
+  },
+
+  // Exclui uma pelada específica. Não exposto em nenhum botão do app —
+  // o histórico de peladas nunca é apagável pela interface, só por aqui em manutenção pontual.
+  delete: async (date: string): Promise<void> => {
+    await deleteDoc(doc(firestore, PELADAS_COLLECTION, date));
   },
 
   // Salva o resultado da pelada (time campeão + estatísticas por jogador).

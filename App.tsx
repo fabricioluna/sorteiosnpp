@@ -308,17 +308,22 @@ const App: React.FC = () => {
     const playerToSave = tempPlayersToRegister.find(p => p.id === tempId);
     if (!playerToSave) return;
     const newDbPlayer = await db.addPlayer({ name: playerToSave.name, position: playerToSave.position, level: playerToSave.level });
-    setPlayers(prev => prev.map(p => p.id === tempId ? { ...newDbPlayer, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
+    // Usa o id real gerado pelo Firestore (não o id temporário da sessão) — é ele que
+    // as estatísticas da pelada (peladasDb) usam pra rastrear o jogador depois.
+    setPlayers(prev => prev.map(p => p.id === tempId ? { ...newDbPlayer, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister(prev => prev.filter(p => p.id !== tempId));
   };
 
   const handleSaveAll = async () => {
     const updatesMap = new Map<string, Player>();
-    await Promise.all(tempPlayersToRegister.map(async p => {
+    // Sequencial de propósito: addPlayer gera o próximo código lendo o cadastro atual,
+    // então rodar em paralelo faria vários convidados calcularem o mesmo código.
+    for (const p of tempPlayersToRegister) {
       const newDbPlayer = await db.addPlayer({ name: p.name, position: p.position, level: p.level });
       updatesMap.set(p.id, newDbPlayer);
-    }));
-    setPlayers(prev => prev.map(p => updatesMap.has(p.id) ? { ...updatesMap.get(p.id)!, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
+    }
+    // Idem: mantém o id real do Firestore, não o id temporário da sessão.
+    setPlayers(prev => prev.map(p => updatesMap.has(p.id) ? { ...updatesMap.get(p.id)!, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister([]);
   };
 
