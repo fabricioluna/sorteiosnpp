@@ -1,4 +1,4 @@
-export type Position = 'Zagueiro' | 'Meia' | 'Atacante';
+export type Position = 'Zagueiro' | 'Meia' | 'Atacante' | 'Não definida';
 
 export interface Player {
   id: string;

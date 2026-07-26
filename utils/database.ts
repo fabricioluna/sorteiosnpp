@@ -75,5 +75,29 @@ export const db = {
   findByCode: (code: string): Player | undefined => {
     const players = db.getAllPlayers();
     return players.find(p => p.code === code);
+  },
+
+  // Cria um jogador com código explícito (em vez de gerado automaticamente).
+  // Usado pela importação em lote. Não valida duplicidade — quem chama deve checar antes.
+  addPlayerWithCode: (player: Omit<Player, 'id' | 'redCards' | 'goals'>): Player => {
+    const players = db.getAllPlayers();
+
+    const newPlayer: Player = {
+      id: generateUniqueId(),
+      code: player.code,
+      name: player.name,
+      position: player.position,
+      level: player.level,
+      redCards: 0,
+      goals: 0
+    };
+
+    players.push(newPlayer);
+    localStorage.setItem(DB_KEY, JSON.stringify(players));
+    return newPlayer;
+  },
+
+  clearAll: (): void => {
+    localStorage.removeItem(DB_KEY);
   }
 };

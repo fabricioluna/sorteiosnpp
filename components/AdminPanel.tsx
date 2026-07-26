@@ -22,6 +22,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [editPosition, setEditPosition] = useState<Position>('Meia');
   const [editLevel, setEditLevel] = useState(5);
 
+  // Estado para IMPORTAÇÃO EM LOTE
+  const [importText, setImportText] = useState('');
+  const [importErrors, setImportErrors] = useState<string[]>([]);
+  const [importSummary, setImportSummary] = useState<string | null>(null);
+
   useEffect(() => {
     if (isAuthenticated) loadPlayers();
   }, [isAuthenticated]);
@@ -94,6 +99,57 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     }
   };
 
+  const handleClearAll = () => {
+    if (confirm('Isso vai apagar TODOS os jogadores cadastrados. Essa ação não pode ser desfeita. Continuar?')) {
+      db.clearAll();
+      setPlayers([]);
+      setEditingId(null);
+    }
+  };
+
+  // Aceita duas formas de linha:
+  //   "Nome Número"  -> usa o número como código real do jogador
+  //   "Nome"         -> gera código temporário sequencial a partir de 900
+  const handleImport = (e: React.FormEvent) => {
+    e.preventDefault();
+    const lines = importText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return;
+
+    const usedCodes = new Set(db.getAllPlayers().map(p => p.code));
+    const errors: string[] = [];
+    let importedCount = 0;
+
+    lines.forEach(line => {
+      const tokens = line.split(/\s+/);
+      const lastToken = tokens[tokens.length - 1];
+      const hasExplicitCode = tokens.length > 1 && /^\d+$/.test(lastToken);
+
+      const name = (hasExplicitCode ? tokens.slice(0, -1).join(' ') : line).trim();
+      if (!name) {
+        errors.push(`"${line}" — nome vazio`);
+        return;
+      }
+
+      const code = hasExplicitCode
+        ? lastToken.padStart(3, '0')
+        : db.getNextAvailableTempCode(usedCodes);
+
+      if (usedCodes.has(code)) {
+        errors.push(`"${line}" — código #${code} já está em uso`);
+        return;
+      }
+
+      db.addPlayerWithCode({ name, code, position: 'Não definida', level: 5 });
+      usedCodes.add(code);
+      importedCount++;
+    });
+
+    setImportErrors(errors);
+    setImportSummary(`${importedCount} jogador(es) importado(s).${errors.length > 0 ? ` ${errors.length} linha(s) com erro.` : ''}`);
+    setImportText('');
+    loadPlayers();
+  };
+
   const getLevelColor = (l: number) => {
     if (l >= 9) return 'text-purple-400';
     if (l >= 7) return 'text-green-400';
@@ -135,9 +191,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
     <div className="animate-in slide-in-from-right duration-300">
       <div className="flex justify-between items-center mb-6">
         <h2 className="text-2xl font-black text-white italic">Gestão de Elenco</h2>
-        <button onClick={onBack} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-700">
-          <i className="fa-solid fa-arrow-left mr-2"></i> Voltar
-        </button>
+        <div className="flex gap-2">
+          <button onClick={handleClearAll} className="bg-red-900/30 text-red-400 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-600 hover:text-white transition-colors border border-red-900/50">
+            <i className="fa-solid fa-trash mr-2"></i> Zerar Cadastro
+          </button>
+          <button onClick={onBack} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-slate-700">
+            <i className="fa-solid fa-arrow-left mr-2"></i> Voltar
+          </button>
+        </div>
       </div>
 
       {/* FORMULÁRIO DE CADASTRO */}
@@ -181,6 +242,40 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         </form>
       </div>
 
+      {/* IMPORTAÇÃO EM LOTE */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8 shadow-xl">
+        <h3 className="text-blue-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-file-import"></i> Importar Lista
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Um jogador por linha. Use <code className="bg-slate-950 px-1 rounded">Nome Número</code> quando souber o código real (ex: "Fabrício 7"),
+          ou apenas <code className="bg-slate-950 px-1 rounded">Nome</code> para gerar um código temporário (900, 901, ...) a ser corrigido depois.
+        </p>
+        <form onSubmit={handleImport} className="space-y-3">
+          <textarea
+            value={importText}
+            onChange={e => setImportText(e.target.value)}
+            className="w-full h-40 p-3 bg-slate-950 border border-slate-700 rounded-lg text-white font-mono text-sm focus:border-blue-500 outline-none resize-none"
+            placeholder={'Fabrício 7\nJoão 8\nJosé 34\nPatrick'}
+          />
+          <button type="submit" disabled={!importText.trim()} className="w-full md:w-auto px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-lg transition-colors">
+            <i className="fa-solid fa-upload mr-2"></i> Importar
+          </button>
+        </form>
+
+        {importSummary && (
+          <div className="mt-4 text-sm font-bold text-green-400">{importSummary}</div>
+        )}
+        {importErrors.length > 0 && (
+          <div className="mt-2 bg-red-950/40 border border-red-900/50 rounded-lg p-3">
+            <p className="text-xs font-bold text-red-400 uppercase mb-2">Linhas com erro:</p>
+            <ul className="text-xs text-red-300 space-y-1 list-disc list-inside">
+              {importErrors.map((err, idx) => <li key={idx}>{err}</li>)}
+            </ul>
+          </div>
+        )}
+      </div>
+
       {/* LISTA DE JOGADORES */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 overflow-hidden shadow-xl">
         <div className="p-4 bg-slate-950 border-b border-slate-800 flex justify-between items-center">
@@ -204,10 +299,11 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
                       autoFocus
                     />
                     <select 
-                      value={editPosition} 
+                      value={editPosition}
                       onChange={e => setEditPosition(e.target.value as Position)}
                       className="bg-slate-950 border border-blue-500 rounded px-2 py-1 text-white focus:outline-none"
                     >
+                      <option value="Não definida">Não definida</option>
                       <option value="Zagueiro">Zagueiro</option>
                       <option value="Meia">Meia</option>
                       <option value="Atacante">Atacante</option>
