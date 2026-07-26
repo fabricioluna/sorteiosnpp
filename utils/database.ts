@@ -1,6 +1,16 @@
+import {
+  collection,
+  getDocs,
+  addDoc,
+  updateDoc,
+  deleteDoc,
+  doc,
+  writeBatch,
+} from 'firebase/firestore';
+import { firestore } from './firebase';
 import { Player } from '../types';
 
-const DB_KEY = 'snpp_db_players';
+const PLAYERS_COLLECTION = 'players';
 
 const generateCode = (existingPlayers: Player[]): string => {
   const codes = existingPlayers
@@ -15,89 +25,71 @@ const generateCode = (existingPlayers: Player[]): string => {
   return nextCode.toString().padStart(3, '0');
 };
 
-// Gera um ID único e à prova de falhas (Timestamp + Aleatório)
-const generateUniqueId = () => {
-  return `db-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 9)}`;
-};
-
 export const db = {
-  getAllPlayers: (): Player[] => {
+  getAllPlayers: async (): Promise<Player[]> => {
     try {
-      const data = localStorage.getItem(DB_KEY);
-      return data ? JSON.parse(data) : [];
+      const snapshot = await getDocs(collection(firestore, PLAYERS_COLLECTION));
+      return snapshot.docs.map(d => ({ ...(d.data() as Omit<Player, 'id'>), id: d.id }));
     } catch (e) {
-      console.error("Erro ao ler banco de dados", e);
+      console.error('Erro ao ler banco de dados', e);
       return [];
     }
   },
 
-  addPlayer: (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>): Player => {
-    const players = db.getAllPlayers();
-    
-    const newPlayer: Player = {
-      id: generateUniqueId(), // ID CORRIGIDO AQUI
+  addPlayer: async (player: Omit<Player, 'id' | 'code' | 'redCards' | 'goals'>): Promise<Player> => {
+    const players = await db.getAllPlayers();
+
+    const newPlayerData = {
       code: generateCode(players),
       name: player.name,
       position: player.position,
       level: player.level,
       redCards: 0,
-      goals: 0
+      goals: 0,
     };
-    
-    players.push(newPlayer);
-    localStorage.setItem(DB_KEY, JSON.stringify(players));
-    return newPlayer;
-  },
 
-  updatePlayer: (id: string, updates: Partial<Omit<Player, 'id' | 'code'>>) => {
-    const players = db.getAllPlayers();
-    const updatedPlayers = players.map(p => {
-      if (p.id === id) {
-        return { ...p, ...updates };
-      }
-      return p;
-    });
-    localStorage.setItem(DB_KEY, JSON.stringify(updatedPlayers));
-  },
-
-  deletePlayer: (id: string) => {
-    const players = db.getAllPlayers();
-    // Filtra removendo apenas o ID específico
-    const newPlayers = players.filter(p => p.id !== id);
-    localStorage.setItem(DB_KEY, JSON.stringify(newPlayers));
-  },
-
-  findByName: (name: string): Player | undefined => {
-    const players = db.getAllPlayers();
-    return players.find(p => p.name.toLowerCase() === name.toLowerCase());
-  },
-
-  findByCode: (code: string): Player | undefined => {
-    const players = db.getAllPlayers();
-    return players.find(p => p.code === code);
+    const docRef = await addDoc(collection(firestore, PLAYERS_COLLECTION), newPlayerData);
+    return { ...newPlayerData, id: docRef.id };
   },
 
   // Cria um jogador com código explícito (em vez de gerado automaticamente).
   // Usado pela importação em lote. Não valida duplicidade — quem chama deve checar antes.
-  addPlayerWithCode: (player: Omit<Player, 'id' | 'redCards' | 'goals'>): Player => {
-    const players = db.getAllPlayers();
-
-    const newPlayer: Player = {
-      id: generateUniqueId(),
+  addPlayerWithCode: async (player: Omit<Player, 'id' | 'redCards' | 'goals'>): Promise<Player> => {
+    const newPlayerData = {
       code: player.code,
       name: player.name,
       position: player.position,
       level: player.level,
       redCards: 0,
-      goals: 0
+      goals: 0,
     };
 
-    players.push(newPlayer);
-    localStorage.setItem(DB_KEY, JSON.stringify(players));
-    return newPlayer;
+    const docRef = await addDoc(collection(firestore, PLAYERS_COLLECTION), newPlayerData);
+    return { ...newPlayerData, id: docRef.id };
   },
 
-  clearAll: (): void => {
-    localStorage.removeItem(DB_KEY);
-  }
+  updatePlayer: async (id: string, updates: Partial<Omit<Player, 'id' | 'code'>>): Promise<void> => {
+    await updateDoc(doc(firestore, PLAYERS_COLLECTION, id), updates);
+  },
+
+  deletePlayer: async (id: string): Promise<void> => {
+    await deleteDoc(doc(firestore, PLAYERS_COLLECTION, id));
+  },
+
+  findByName: async (name: string): Promise<Player | undefined> => {
+    const players = await db.getAllPlayers();
+    return players.find(p => p.name.toLowerCase() === name.toLowerCase());
+  },
+
+  findByCode: async (code: string): Promise<Player | undefined> => {
+    const players = await db.getAllPlayers();
+    return players.find(p => p.code === code);
+  },
+
+  clearAll: async (): Promise<void> => {
+    const snapshot = await getDocs(collection(firestore, PLAYERS_COLLECTION));
+    const batch = writeBatch(firestore);
+    snapshot.docs.forEach(d => batch.delete(d.ref));
+    await batch.commit();
+  },
 };

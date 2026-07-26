@@ -5,7 +5,7 @@ export interface Player {
   code: string; // Código de 3 dígitos (ex: 042)
   name: string;
   position: Position;
-  level: number; // 1 a 10
+  level: number; // 1 a 5 (estrelas)
   redCards: number;
   goals: number;
   // Propriedades usadas apenas durante o sorteio
@@ -21,3 +21,13 @@ export interface Team {
 }
 
 export type AppStep = 'input' | 'classify' | 'results';
+
+// Voto de um jogador sobre o nível/posição de outro jogador (levantamento para a diretoria)
+export interface Vote {
+  id: string; // `${playerId}_${voterKey}`
+  playerId: string;
+  voterName: string;
+  level: number; // 1 a 5
+  position: Position;
+  updatedAt: number;
+}

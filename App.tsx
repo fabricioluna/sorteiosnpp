@@ -2,8 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams } from './utils/sorting';
 import { db } from './utils/database';
-import logoSnpp from './logosnpp.png';
 import AdminPanel from './components/AdminPanel';
+import StarRating from './components/StarRating';
+import VotingPage from './components/VotingPage';
+
+const logoSnpp = '/logosnpp.png';
+
+const isVotingRoute = () => new URLSearchParams(window.location.search).get('view') === 'votacao';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<'sorteio' | 'admin'>('sorteio');
@@ -106,9 +111,12 @@ const App: React.FC = () => {
       .filter(name => name.length >= 2);
   };
 
-  const handleGenerateList = () => {
+  const handleGenerateList = async () => {
     let finalPlayers: Player[] = [];
-    
+    const allDbPlayers = await db.getAllPlayers();
+    const findByCode = (code: string) => allDbPlayers.find(p => p.code === code);
+    const findByName = (name: string) => allDbPlayers.find(p => p.name.toLowerCase() === name.toLowerCase());
+
     const getPlayerData = (lineText: string, isChamp: boolean) => {
       const codeMatch = lineText.match(/#\s*(\d+)/);
       const extractedCode = codeMatch ? codeMatch[1] : null;
@@ -118,11 +126,11 @@ const App: React.FC = () => {
 
       if (extractedCode) {
         const formattedCode = extractedCode.padStart(3, '0');
-        dbPlayer = db.findByCode(formattedCode);
-        if (!dbPlayer) dbPlayer = db.findByCode(extractedCode);
-      } 
-      if (!dbPlayer) dbPlayer = db.findByName(cleanName);
-      
+        dbPlayer = findByCode(formattedCode);
+        if (!dbPlayer) dbPlayer = findByCode(extractedCode);
+      }
+      if (!dbPlayer) dbPlayer = findByName(cleanName);
+
       if (dbPlayer) {
         return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
       }
@@ -132,7 +140,7 @@ const App: React.FC = () => {
         code: extractedCode || '---',
         name: cleanName,
         position: 'Meia' as Position,
-        level: isChamp ? 10 : 5,
+        level: isChamp ? 5 : 3,
         redCards: 0,
         goals: 0,
         isFixedInTeam1: isChamp
@@ -176,16 +184,17 @@ const App: React.FC = () => {
   };
 
   // --- SORTEIO: PASSO 2 (Verificar Alterações no Cadastro) ---
-  const checkForModifications = () => {
+  const checkForModifications = async () => {
+    const allDbPlayers = await db.getAllPlayers();
     const changes: {current: Player, original: Player}[] = [];
-    
+
     players.forEach(p => {
       // Pula convidados (código ---)
       if (p.code === '---') return;
 
       // Busca o original no banco pelo código
-      const original = db.findByCode(p.code);
-      
+      const original = allDbPlayers.find(dp => dp.code === p.code);
+
       if (original) {
         // Verifica se houve mudança em Nível ou Posição
         if (original.level !== p.level || original.position !== p.position) {
@@ -204,20 +213,20 @@ const App: React.FC = () => {
   };
 
   // --- SORTEIO: PASSO 3 (Confirmação e Sorteio Final) ---
-  const confirmUpdatesAndSort = () => {
+  const confirmUpdatesAndSort = async () => {
     if (updateAuthPassword !== 'snpp2026') {
       alert('Senha administrativa incorreta.');
       return;
     }
 
     // Aplica as atualizações no banco de dados
-    modifiedPlayers.forEach(({ current, original }) => {
+    await Promise.all(modifiedPlayers.map(({ current, original }) =>
       // Precisamos do ID original do banco (que está em 'original.id'), não do ID da partida
       db.updatePlayer(original.id, {
         level: current.level,
         position: current.position
-      });
-    });
+      })
+    ));
 
     setShowUpdateAuth(false);
     finalSort();
@@ -243,20 +252,20 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
-  const handleQuickSaveOne = (tempId: string) => {
+  const handleQuickSaveOne = async (tempId: string) => {
     const playerToSave = tempPlayersToRegister.find(p => p.id === tempId);
     if (!playerToSave) return;
-    const newDbPlayer = db.addPlayer({ name: playerToSave.name, position: playerToSave.position, level: playerToSave.level });
+    const newDbPlayer = await db.addPlayer({ name: playerToSave.name, position: playerToSave.position, level: playerToSave.level });
     setPlayers(prev => prev.map(p => p.id === tempId ? { ...newDbPlayer, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister(prev => prev.filter(p => p.id !== tempId));
   };
 
-  const handleSaveAll = () => {
+  const handleSaveAll = async () => {
     const updatesMap = new Map<string, Player>();
-    tempPlayersToRegister.forEach(p => {
-      const newDbPlayer = db.addPlayer({ name: p.name, position: p.position, level: p.level });
+    await Promise.all(tempPlayersToRegister.map(async p => {
+      const newDbPlayer = await db.addPlayer({ name: p.name, position: p.position, level: p.level });
       updatesMap.set(p.id, newDbPlayer);
-    });
+    }));
     setPlayers(prev => prev.map(p => updatesMap.has(p.id) ? { ...updatesMap.get(p.id)!, id: p.id, isFixedInTeam1: p.isFixedInTeam1 } : p));
     setTempPlayersToRegister([]);
   };
@@ -294,11 +303,19 @@ const App: React.FC = () => {
   ];
 
   const getLevelColor = (level: number) => {
-    if (level >= 9) return 'text-purple-400';
-    if (level >= 7) return 'text-green-400';
-    if (level >= 5) return 'text-yellow-400';
+    if (level >= 5) return 'text-purple-400';
+    if (level >= 4) return 'text-green-400';
+    if (level >= 3) return 'text-yellow-400';
     return 'text-red-400';
   };
+
+  if (isVotingRoute()) {
+    return (
+      <div className="min-h-screen bg-[#020617] text-gray-100 font-inter p-4">
+        <div className="max-w-2xl mx-auto"><VotingPage /></div>
+      </div>
+    );
+  }
 
   if (currentView === 'admin') {
     return (
@@ -507,12 +524,8 @@ const App: React.FC = () => {
                       ))}
                     </div>
                     <div className="flex flex-col gap-1">
-                      <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-10)</span>
-                      <div className="grid grid-cols-10 md:grid-cols-10 gap-1">
-                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
-                          <button key={num} onClick={() => handleUpdatePlayer(player.id, { level: num })} className={`w-7 h-8 md:w-8 md:h-8 rounded flex items-center justify-center font-bold text-sm transition-all ${player.level === num ? 'bg-gradient-to-br from-orange-400 to-orange-600 text-white shadow-lg scale-110 z-10 ring-1 ring-orange-300' : 'bg-slate-800 text-slate-500 hover:bg-slate-700 hover:text-slate-200'}`}>{num}</button>
-                        ))}
-                      </div>
+                      <span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">Nível Técnico (1-5)</span>
+                      <StarRating rating={player.level} onChange={(level) => handleUpdatePlayer(player.id, { level })} />
                     </div>
                   </div>
                 </div>
@@ -593,9 +606,13 @@ const PlayerSelectionModal: React.FC<{
 }> = ({ onClose, onSelect, onRemove, usedCodes }) => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setPlayers(db.getAllPlayers().sort((a, b) => a.name.localeCompare(b.name)));
+    db.getAllPlayers().then(all => {
+      setPlayers(all.sort((a, b) => a.name.localeCompare(b.name)));
+      setIsLoading(false);
+    });
   }, []);
 
   const filteredPlayers = players.filter(p => 
@@ -624,7 +641,9 @@ const PlayerSelectionModal: React.FC<{
         </div>
 
         <div className="overflow-y-auto custom-scrollbar flex-1 p-2">
-          {filteredPlayers.length === 0 ? (
+          {isLoading ? (
+            <p className="text-center text-slate-500 py-4"><i className="fa-solid fa-spinner fa-spin"></i></p>
+          ) : filteredPlayers.length === 0 ? (
             <p className="text-center text-slate-500 py-4">Nenhum jogador encontrado.</p>
           ) : (
             <div className="grid grid-cols-1 gap-2">
@@ -669,7 +688,9 @@ const QuickRegisterRow: React.FC<{ player: Player; onUpdate: (id: string, field:
         <input value={player.name} onChange={(e) => onUpdate(player.id, 'name', e.target.value)} className="flex-1 bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none" placeholder="Nome do Jogador" />
         <div className="flex gap-2">
           <select value={player.position} onChange={(e) => onUpdate(player.id, 'position', e.target.value)} className="bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 text-white focus:border-orange-500 outline-none"><option value="Zagueiro">Zagueiro</option><option value="Meia">Meia</option><option value="Atacante">Atacante</option></select>
-          <input type="number" min="1" max="10" value={player.level} onChange={(e) => onUpdate(player.id, 'level', Number(e.target.value))} className="w-16 bg-slate-950 border border-slate-600 rounded-lg px-2 py-2 text-white focus:border-orange-500 outline-none text-center" />
+          <div className="bg-slate-950 border border-slate-600 rounded-lg px-3 py-2 flex items-center">
+            <StarRating rating={player.level} onChange={(level) => onUpdate(player.id, 'level', level)} />
+          </div>
         </div>
       </div>
       <button onClick={onSave} className="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded-lg flex items-center justify-center gap-2 text-sm"><i className="fa-solid fa-floppy-disk"></i> Salvar no Banco</button>
