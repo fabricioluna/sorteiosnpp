@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AppStep, Player, Position, Team } from './types';
 import { balanceTeams, balanceTeamsByGroups, recommendDrawLevels } from './utils/sorting';
 import { db } from './utils/database';
-import { peladasDb } from './utils/peladas';
+import { peladasDb, getDrawAdjustment } from './utils/peladas';
 import AdminPanel from './components/AdminPanel';
 import StarRating from './components/StarRating';
 import VotingPage from './components/VotingPage';
@@ -25,6 +25,9 @@ const App: React.FC = () => {
   const [players, setPlayers] = useState<Player[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [drawGroups, setDrawGroups] = useState<Player[]>([]);
+  // Ajuste histórico já calculado (playerId -> valor pronto pra somar ao nível, entre -1 e 1) usado
+  // na última recomendação de grupos — só para sinalizar na tela quem foi influenciado pelo histórico.
+  const [historicalAdjustments, setHistoricalAdjustments] = useState<Record<string, number>>({});
 
   // --- ESTADOS PARA MODAIS ---
   const [showQuickRegister, setShowQuickRegister] = useState(false);
@@ -149,7 +152,9 @@ const App: React.FC = () => {
       if (!dbPlayer) dbPlayer = findByName(cleanName);
 
       if (dbPlayer) {
-        return { ...dbPlayer, id: `match-${Date.now()}-${Math.random()}`, isFixedInTeam1: isChamp };
+        // Mantém o id real do Firestore (não gera um id temporário de sessão) — é ele que
+        // as peladas usam pra rastrear estatísticas e histórico desse jogador entre partidas.
+        return { ...dbPlayer, isFixedInTeam1: isChamp };
       }
 
       return {
@@ -273,14 +278,23 @@ const App: React.FC = () => {
   // Jogadores fixos (campeões) ficam fora da reclassificação — eles já têm time definido.
   // Só é possível recomendar grupos quando a quantidade de jogadores "livres" é múltiplo de 5;
   // caso contrário (grupo do dia incompleto), cai de volta no sorteio antigo por soma de nível.
-  const prepareGroups = () => {
+  const prepareGroups = async () => {
     const groupablePlayers = players.filter(p => !p.isFixedInTeam1);
     if (groupablePlayers.length % 5 !== 0 || groupablePlayers.length === 0) {
       setDrawGroups([]);
       finalSort([]);
       return;
     }
-    setDrawGroups(recommendDrawLevels(groupablePlayers));
+
+    const biasByPlayer = await peladasDb.computeHistoricalBias(groupablePlayers.map(p => p.id));
+    const adjustments: Record<string, number> = {};
+    Object.entries(biasByPlayer).forEach(([playerId, bias]) => {
+      const adjustment = getDrawAdjustment(bias);
+      if (adjustment !== 0) adjustments[playerId] = adjustment;
+    });
+
+    setHistoricalAdjustments(adjustments);
+    setDrawGroups(recommendDrawLevels(groupablePlayers, adjustments));
     setStep('groups');
     setShowQuickRegister(false);
   };
@@ -347,7 +361,10 @@ const App: React.FC = () => {
     const text = teams.filter(t => t.players.length > 0).map(t => {
       const playerList = t.players.map(p => {
         const codeStr = p.code !== '---' ? ` #${p.code}` : '';
-        return `• ${p.name}${codeStr}`;
+        const levelStr = p.drawLevel !== undefined && p.drawLevel !== p.level
+          ? ` (nível ${p.level}→${p.drawLevel})`
+          : ` (nível ${p.level})`;
+        return `• ${p.name}${codeStr}${levelStr}`;
       }).join('\n');
       const forceInfo = t.players.length === 5 ? `(Força: ${t.totalLevel})` : '(Incompleto)';
       return `*${t.name}* ${forceInfo}\n${playerList}`;
@@ -717,7 +734,15 @@ const App: React.FC = () => {
                         return (
                         <div key={player.id} className="flex items-center justify-between gap-3 bg-slate-900 rounded-lg p-2 border border-slate-800">
                           <div className="min-w-0">
-                            <div className="font-bold text-white text-sm truncate">{player.name}</div>
+                            <div className="font-bold text-white text-sm truncate flex items-center gap-1.5">
+                              {player.name}
+                              {historicalAdjustments[player.id] !== undefined && (
+                                <i
+                                  className="fa-solid fa-chart-line text-sky-400 text-xs"
+                                  title={`Posicionado com base no histórico de ajustes (${historicalAdjustments[player.id] > 0 ? '+' : ''}${historicalAdjustments[player.id].toFixed(1)})`}
+                                ></i>
+                              )}
+                            </div>
                             <div className="text-[10px] text-slate-500 uppercase font-bold flex items-center gap-1.5 flex-wrap">
                               <span>{player.position}</span>
                               <span className="text-slate-700">•</span>

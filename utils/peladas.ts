@@ -11,14 +11,23 @@ const teamsToPeladaTeams = (teams: Team[]): PeladaTeam[] =>
     .map(t => ({
       id: t.id,
       name: t.name,
-      players: t.players.map(p => ({
-        playerId: p.id,
-        name: p.name,
-        code: p.code,
-        goals: 0,
-        yellowCards: 0,
-        redCards: 0,
-      })),
+      players: t.players.map(p => {
+        // suggestedLevel/finalLevel só existem quando o jogador passou pelo balanceamento por
+        // níveis (recommendDrawLevels) — campeões fixos e o algoritmo padrão não têm esses valores.
+        // Omitidos (não `undefined`) porque o Firestore rejeita campos com valor undefined.
+        const result: PeladaPlayerResult = {
+          playerId: p.id,
+          name: p.name,
+          code: p.code,
+          goals: 0,
+          yellowCards: 0,
+          redCards: 0,
+          registeredLevel: p.level,
+        };
+        if (p.suggestedDrawLevel !== undefined) result.suggestedLevel = p.suggestedDrawLevel;
+        if (p.drawLevel !== undefined) result.finalLevel = p.drawLevel;
+        return result;
+      }),
     }));
 
 export const peladasDb = {
@@ -53,10 +62,34 @@ export const peladasDb = {
     return snapshot.exists() ? { ...(snapshot.data() as Omit<Pelada, 'id'>), id: snapshot.id } : undefined;
   },
 
-  // Exclui uma pelada específica. Não exposto em nenhum botão do app —
-  // o histórico de peladas nunca é apagável pela interface, só por aqui em manutenção pontual.
-  delete: async (date: string): Promise<void> => {
-    await deleteDoc(doc(firestore, PELADAS_COLLECTION, date));
+  // Exclui uma pelada. Se ela estava 'concluída' (já teve título/gols/cartões somados ao
+  // cadastro), reverte essa contribuição antes de apagar — subtraindo via increment() negativo,
+  // igual à lógica de saveResult, só que comparando contra zero em vez de um valor novo.
+  remove: async (date: string): Promise<void> => {
+    const ref = doc(firestore, PELADAS_COLLECTION, date);
+    const snapshot = await getDoc(ref);
+    if (!snapshot.exists()) return;
+    const pelada = snapshot.data() as Pelada;
+
+    if (pelada.status === 'concluída') {
+      await Promise.all(
+        pelada.teams.flatMap(t => t.players).map(async p => {
+          const isChampion = pelada.championTeamId === pelada.teams.find(t => t.players.some(pl => pl.playerId === p.playerId))?.id;
+          try {
+            await updateDoc(doc(firestore, PLAYERS_COLLECTION, p.playerId), {
+              goals: increment(-p.goals),
+              yellowCards: increment(-p.yellowCards),
+              redCards: increment(-p.redCards),
+              titles: increment(isChampion ? -1 : 0),
+            });
+          } catch (e) {
+            console.error(`Não foi possível reverter estatísticas de ${p.name} (${p.playerId})`, e);
+          }
+        })
+      );
+    }
+
+    await deleteDoc(ref);
   },
 
   // Salva o resultado da pelada (time campeão + estatísticas por jogador).
@@ -124,4 +157,50 @@ export const peladasDb = {
     };
     await setDoc(ref, peladaData);
   },
+
+  // Varre todas as peladas e calcula, por jogador, a média de (nível final - nível sugerido)
+  // — só considerando peladas onde o jogador passou pelo balanceamento por níveis de verdade.
+  // Calculado sob demanda a partir do histórico (não é um agregado mantido no cadastro) para
+  // não correr risco de dessincronia entre criar/editar/excluir pelada.
+  computeHistoricalBias: async (playerIds?: string[]): Promise<Record<string, HistoricalBias>> => {
+    const peladas = await peladasDb.getAll();
+    const deltasByPlayer = new Map<string, number[]>();
+
+    peladas.forEach(pelada => {
+      pelada.teams.forEach(team => {
+        team.players.forEach(p => {
+          if (p.suggestedLevel === undefined || p.finalLevel === undefined) return;
+          if (playerIds && !playerIds.includes(p.playerId)) return;
+          const delta = p.finalLevel - p.suggestedLevel;
+          if (!deltasByPlayer.has(p.playerId)) deltasByPlayer.set(p.playerId, []);
+          deltasByPlayer.get(p.playerId)!.push(delta);
+        });
+      });
+    });
+
+    const result: Record<string, HistoricalBias> = {};
+    deltasByPlayer.forEach((deltas, playerId) => {
+      const bias = deltas.reduce((sum, d) => sum + d, 0) / deltas.length;
+      result[playerId] = { bias, sampleSize: deltas.length };
+    });
+    return result;
+  },
 };
+
+export interface HistoricalBias {
+  bias: number; // média bruta de (nível final - nível sugerido) nas peladas com dado disponível
+  sampleSize: number; // quantas peladas embasam essa média
+}
+
+const MIN_SAMPLE_SIZE = 4;
+
+// Ajuste pronto para somar ao nível cadastrado na recomendação de grupos do sorteio:
+// amostra mínima de 4 peladas, sempre limitado a ±1 para o histórico nunca dominar o cadastro oficial.
+export const getDrawAdjustment = (bias: HistoricalBias | undefined): number => {
+  if (!bias || bias.sampleSize < MIN_SAMPLE_SIZE) return 0;
+  return Math.max(-1, Math.min(1, bias.bias));
+};
+
+// Jogador com sinal forte o bastante pra valer uma revisão manual do nível cadastrado no Admin.
+export const isReviewWorthy = (bias: HistoricalBias): boolean =>
+  bias.sampleSize >= MIN_SAMPLE_SIZE && Math.abs(bias.bias) >= 0.75;

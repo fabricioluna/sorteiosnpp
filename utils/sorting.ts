@@ -22,26 +22,35 @@ const POSITION_TIEBREAK_ORDER: Record<Position, number> = {
 
 /**
  * Reclassifica um grupo de jogadores em "níveis de sorteio" (1 a 5), em blocos de tamanho igual.
- * Não altera o nível cadastrado (`level`) — só define `drawLevel`, usado apenas nesse sorteio.
- * O grupo precisa ter um tamanho múltiplo de 5 (ex: 20 jogadores -> 5 blocos de 4).
+ * Não altera o nível cadastrado (`level`) — só define `drawLevel`/`suggestedDrawLevel`, usados
+ * apenas nesse sorteio. O grupo precisa ter um tamanho múltiplo de 5 (ex: 20 jogadores -> 5 blocos de 4).
+ *
+ * `historicalAdjustments` (opcional) é um ajuste já pronto para somar ao nível cadastrado na hora
+ * de ordenar — ver utils/peladas.ts#getDrawAdjustment para como ele é calculado e limitado a ±1.
  */
-export const recommendDrawLevels = (players: Player[]): Player[] => {
+export const recommendDrawLevels = (
+  players: Player[],
+  historicalAdjustments: Record<string, number> = {}
+): Player[] => {
   const groupSize = players.length / 5;
   if (!Number.isInteger(groupSize) || groupSize <= 0) {
     throw new Error('A quantidade de jogadores precisa ser múltipla de 5 para recomendar os grupos de sorteio.');
   }
 
+  const adjustedLevel = (p: Player) => p.level + (historicalAdjustments[p.id] ?? 0);
+
   const ranked = [...players].sort((a, b) => {
-    if (b.level !== a.level) return b.level - a.level;
+    const diff = adjustedLevel(b) - adjustedLevel(a);
+    if (diff !== 0) return diff;
     const posDiff = POSITION_TIEBREAK_ORDER[a.position] - POSITION_TIEBREAK_ORDER[b.position];
     if (posDiff !== 0) return posDiff;
     return a.name.localeCompare(b.name);
   });
 
-  return ranked.map((player, idx) => ({
-    ...player,
-    drawLevel: 5 - Math.floor(idx / groupSize),
-  }));
+  return ranked.map((player, idx) => {
+    const drawLevel = 5 - Math.floor(idx / groupSize);
+    return { ...player, drawLevel, suggestedDrawLevel: drawLevel };
+  });
 };
 
 /**

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Player, Position, Pelada } from '../types';
 import { db } from '../utils/database';
 import { votesDb, summarizeVotes, VoteSummary } from '../utils/votes';
-import { peladasDb } from '../utils/peladas';
+import { peladasDb, isReviewWorthy, HistoricalBias } from '../utils/peladas';
 import StarRating from './StarRating';
 import PeladaEditor from './PeladaEditor';
 
@@ -44,6 +44,10 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   const [peladas, setPeladas] = useState<Pelada[]>([]);
   const [selectedPelada, setSelectedPelada] = useState<Pelada | null>(null);
 
+  // Estado para REVISÃO DE NÍVEIS SUGERIDA (aprendizado histórico)
+  const [levelReview, setLevelReview] = useState<{ player: Player; bias: HistoricalBias; suggestedLevel: number }[] | null>(null);
+  const [isLoadingReview, setIsLoadingReview] = useState(false);
+
   useEffect(() => {
     if (isAuthenticated) {
       loadPlayers();
@@ -73,6 +77,44 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
 
   const loadPeladas = async () => {
     setPeladas(await peladasDb.getAll());
+  };
+
+  const handleDeletePelada = async (pelada: Pelada) => {
+    const dateFormatted = pelada.date.split('-').reverse().join('/');
+    const message = pelada.status === 'concluída'
+      ? `Excluir a pelada de ${dateFormatted}? Ela já está concluída — título, gols e cartões lançados serão SUBTRAÍDOS dos jogadores envolvidos. Essa ação não pode ser desfeita.`
+      : `Excluir a pelada de ${dateFormatted} (ainda pendente, sem resultado lançado)?`;
+    if (!confirm(message)) return;
+
+    await peladasDb.remove(pelada.date);
+    if (selectedPelada?.date === pelada.date) setSelectedPelada(null);
+    loadPeladas();
+    loadPlayers();
+  };
+
+  // Varre o histórico de peladas em busca de jogadores com desvio médio consistente entre o
+  // nível sugerido pelo algoritmo e o nível final usado no sorteio — só sinaliza, nunca aplica sozinho.
+  const loadLevelReview = async () => {
+    setIsLoadingReview(true);
+    const biasByPlayer = await peladasDb.computeHistoricalBias();
+    const results = players
+      .map(player => {
+        const bias = biasByPlayer[player.id];
+        if (!bias || !isReviewWorthy(bias)) return null;
+        const suggestedLevel = Math.max(1, Math.min(5, Math.round(player.level + bias.bias)));
+        if (suggestedLevel === player.level) return null;
+        return { player, bias, suggestedLevel };
+      })
+      .filter((r): r is { player: Player; bias: HistoricalBias; suggestedLevel: number } => r !== null)
+      .sort((a, b) => Math.abs(b.bias.bias) - Math.abs(a.bias.bias));
+    setLevelReview(results);
+    setIsLoadingReview(false);
+  };
+
+  const handleApplyLevelReview = async (playerId: string, suggestedLevel: number) => {
+    await db.updatePlayer(playerId, { level: suggestedLevel });
+    setLevelReview(prev => prev?.filter(r => r.player.id !== playerId) ?? null);
+    loadPlayers();
   };
 
   const handleCopyRankingLink = () => {
@@ -397,22 +439,74 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
         <div className="rounded-xl border border-slate-800 overflow-hidden">
           <div className="divide-y divide-slate-800 max-h-72 overflow-y-auto custom-scrollbar">
             {peladas.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setSelectedPelada(p)}
-                className="w-full p-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors text-left"
-              >
-                <span className="text-white font-bold text-sm">{p.date.split('-').reverse().join('/')}</span>
-                <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${p.status === 'concluída' ? 'text-green-400 border-green-500/40 bg-green-500/10' : 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10'}`}>
-                  {p.status}
-                </span>
-              </button>
+              <div key={p.id} className="w-full p-3 flex items-center justify-between hover:bg-slate-800/50 transition-colors group">
+                <button onClick={() => setSelectedPelada(p)} className="flex items-center gap-3 flex-1 text-left">
+                  <span className="text-white font-bold text-sm">{p.date.split('-').reverse().join('/')}</span>
+                  <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${p.status === 'concluída' ? 'text-green-400 border-green-500/40 bg-green-500/10' : 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10'}`}>
+                    {p.status}
+                  </span>
+                </button>
+                <button
+                  onClick={() => handleDeletePelada(p)}
+                  className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-colors flex-none"
+                  title="Excluir pelada"
+                >
+                  <i className="fa-solid fa-trash"></i>
+                </button>
+              </div>
             ))}
             {peladas.length === 0 && (
               <p className="p-6 text-center text-slate-500 text-sm">Nenhuma pelada registrada ainda — confirme um sorteio para gerar a primeira.</p>
             )}
           </div>
         </div>
+      </div>
+
+      {/* REVISÃO DE NÍVEIS SUGERIDA (aprendizado histórico) */}
+      <div className="bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8 shadow-xl">
+        <h3 className="text-sky-400 font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+          <i className="fa-solid fa-chart-line"></i> Revisão de Níveis Sugerida
+        </h3>
+        <p className="text-xs text-slate-500 mb-4">
+          Compara, pelada a pelada, o nível sugerido pelo algoritmo com o nível que ficou depois dos seus ajustes manuais. Jogadores com desvio médio consistente (≥4 peladas, desvio ≥ 0,75) aparecem aqui — a mudança no cadastro nunca é automática, só você decide aplicar.
+        </p>
+        <button
+          onClick={loadLevelReview}
+          disabled={isLoadingReview}
+          className="px-4 py-2 bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold rounded-lg text-sm transition-colors flex items-center gap-2"
+        >
+          <i className={`fa-solid ${isLoadingReview ? 'fa-spinner fa-spin' : 'fa-magnifying-glass-chart'}`}></i>
+          {isLoadingReview ? 'Analisando...' : 'Analisar Histórico'}
+        </button>
+
+        {levelReview !== null && (
+          levelReview.length === 0 ? (
+            <p className="text-sm text-slate-500 mt-4">Nenhuma sugestão no momento — nada com desvio consistente o bastante.</p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              {levelReview.map(({ player, bias, suggestedLevel }) => (
+                <div key={player.id} className="flex items-center justify-between gap-3 bg-slate-950 p-3 rounded-lg border border-slate-800">
+                  <div className="min-w-0">
+                    <div className="font-bold text-white truncate">{player.name}</div>
+                    <div className="text-xs text-slate-500">
+                      Cadastrado <span className="text-slate-300">{player.level}</span>
+                      <i className="fa-solid fa-arrow-right mx-1.5"></i>
+                      Sugerido <span className={bias.bias > 0 ? 'text-green-400 font-bold' : 'text-orange-400 font-bold'}>{suggestedLevel}</span>
+                      <span className="mx-1.5 text-slate-700">•</span>
+                      {bias.sampleSize} pelada(s) · desvio médio {bias.bias > 0 ? '+' : ''}{bias.bias.toFixed(2)}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleApplyLevelReview(player.id, suggestedLevel)}
+                    className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-lg text-xs transition-colors flex-none"
+                  >
+                    Aplicar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )
+        )}
       </div>
 
       {/* FORMULÁRIO DE CADASTRO */}

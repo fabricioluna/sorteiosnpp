@@ -13,7 +13,8 @@ export interface Player {
   // Propriedades usadas apenas durante o sorteio
   isFixedInTeam1?: boolean;
   isPresent?: boolean; // Para marcar presença na lista do sorteio
-  drawLevel?: number; // Nível de sorteio (1-5), temporário: só existe durante a confirmação dos grupos, nunca é salvo no cadastro
+  drawLevel?: number; // Nível de sorteio (1-5), final (após ajuste manual) — temporário, nunca é salvo no cadastro
+  suggestedDrawLevel?: number; // Nível de sorteio sugerido pelo algoritmo, antes de qualquer ajuste manual — temporário
 }
 
 export interface Team {
@@ -43,6 +44,9 @@ export interface PeladaPlayerResult {
   goals: number;
   yellowCards: number;
   redCards: number;
+  registeredLevel: number; // Nível cadastrado do jogador no momento do sorteio
+  suggestedLevel?: number; // Nível de sorteio sugerido pelo algoritmo (só quando passou pelo balanceamento por níveis)
+  finalLevel?: number; // Nível de sorteio final, após eventual ajuste manual na tela de grupos
 }
 
 export interface PeladaTeam {
