@@ -549,9 +549,14 @@ const App: React.FC = () => {
 
       {/* Header */}
       <header className="w-full py-8 flex flex-col items-center justify-center space-y-4 relative">
-        <button onClick={() => setCurrentView('admin')} className="absolute top-4 right-4 bg-slate-800 hover:bg-orange-600 text-orange-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg z-50">
-          <span className="text-xs font-bold uppercase tracking-widest">Admin</span><i className="fa-solid fa-gear"></i>
-        </button>
+        <div className="absolute top-4 right-4 flex items-center gap-2 z-50">
+          <a href="?view=ranking" className="bg-slate-800 hover:bg-yellow-600 text-yellow-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg">
+            <span className="text-xs font-bold uppercase tracking-widest">Ranking</span><i className="fa-solid fa-trophy"></i>
+          </a>
+          <button onClick={() => setCurrentView('admin')} className="bg-slate-800 hover:bg-orange-600 text-orange-500 hover:text-white transition-all px-3 py-2 rounded-lg flex items-center gap-2 border border-slate-700 shadow-lg">
+            <span className="text-xs font-bold uppercase tracking-widest">Admin</span><i className="fa-solid fa-gear"></i>
+          </button>
+        </div>
         <div className="w-32 h-32 md:w-40 md:h-40 relative drop-shadow-2xl hover:scale-105 transition-transform duration-300">
           <img src={logoSnpp} alt="Brasão SNPP" className="w-full h-full object-contain drop-shadow-lg" />
         </div>
@@ -789,7 +794,18 @@ const App: React.FC = () => {
                               </div>
                               <div className="text-[10px] text-slate-500 font-black uppercase tracking-widest">{p.position}</div>
                             </div>
-                            <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800"><span className={`font-black text-sm ${getLevelColor(p.level)}`}>{p.level}</span><i className="fa-solid fa-bolt text-[10px] text-slate-600"></i></div>
+                            <div className="flex items-center gap-1.5 bg-slate-950 px-2 py-1 rounded border border-slate-800">
+                              {p.drawLevel !== undefined && p.drawLevel !== p.level ? (
+                                <>
+                                  <span className="text-[10px] text-slate-600 line-through" title="Nível cadastrado">{p.level}</span>
+                                  <i className={`fa-solid ${p.drawLevel > p.level ? 'fa-arrow-up text-green-400' : 'fa-arrow-down text-orange-400'} text-[9px]`}></i>
+                                  <span className={`font-black text-sm ${getLevelColor(p.drawLevel)}`} title="Nível de sorteio">{p.drawLevel}</span>
+                                </>
+                              ) : (
+                                <span className={`font-black text-sm ${getLevelColor(p.level)}`}>{p.level}</span>
+                              )}
+                              <i className="fa-solid fa-bolt text-[10px] text-slate-600"></i>
+                            </div>
                           </li>
                         ))}
                       </ul>
