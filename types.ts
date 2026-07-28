@@ -24,7 +24,7 @@ export interface Team {
   totalLevel: number;
 }
 
-export type AppStep = 'input' | 'classify' | 'groups' | 'results';
+export type AppStep = 'input' | 'preview' | 'classify' | 'groups' | 'results';
 
 // Voto de um jogador sobre o nível/posição de outro jogador (levantamento para a diretoria)
 export interface Vote {
