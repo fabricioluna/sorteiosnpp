@@ -57,11 +57,9 @@ const App: React.FC = () => {
   const [step, setStep] = useState<AppStep>('input');
   const [matchDate, setMatchDate] = useState(new Date().toISOString().split('T')[0]);
   
-  const [useChampionMode, setUseChampionMode] = useState(false);
-  const [championText, setChampionText] = useState('');
   const [rawText, setRawText] = useState('');
 
-  // Estado da pré-visualização da convocação colada (só usado fora do modo campeão)
+  // Estado da pré-visualização da convocação colada
   const [previewLines, setPreviewLines] = useState<PreviewRow[]>([]);
   const [discardedLines, setDiscardedLines] = useState<string[]>([]);
 
@@ -81,7 +79,7 @@ const App: React.FC = () => {
   const [modifiedPlayers, setModifiedPlayers] = useState<{current: Player, original: Player}[]>([]);
   const [updateAuthPassword, setUpdateAuthPassword] = useState('');
 
-  const [showPlayerSelector, setShowPlayerSelector] = useState<'champion' | 'general' | null>(null);
+  const [showPlayerSelector, setShowPlayerSelector] = useState(false);
 
   // --- PERSISTÊNCIA ---
   useEffect(() => {
@@ -120,8 +118,7 @@ const App: React.FC = () => {
   };
 
   const extractUsedCodes = (): number[] => {
-    const allLines = (championText + '\n' + rawText).split('\n');
-    return allLines.map(getLineCode).filter((code): code is number => code !== null);
+    return rawText.split('\n').map(getLineCode).filter((code): code is number => code !== null);
   };
 
   const countLines = (text: string) => {
@@ -132,77 +129,28 @@ const App: React.FC = () => {
   const handleSelectPlayerFromDb = (player: Player) => {
     const usedCodes = extractUsedCodes();
     const playerCodeNum = parseInt(player.code, 10);
-    
+
     if (usedCodes.includes(playerCodeNum)) return;
 
-    const currentChampCount = countLines(championText);
-    const currentRawCount = countLines(rawText);
-    const totalCount = currentChampCount + currentRawCount;
-
-    if (totalCount >= 20) {
+    if (countLines(rawText) >= 20) {
       alert("A lista já atingiu o limite máximo de 20 atletas.");
       return;
     }
 
-    if (showPlayerSelector === 'champion') {
-      if (currentChampCount >= 5) {
-        alert("O Time Campeão já tem 5 atletas.");
-        return;
-      }
-      setChampionText(prev => (prev.trim() + `\n${player.name} ${parseInt(player.code, 10)}`).trim());
-    } else if (showPlayerSelector === 'general') {
-      setRawText(prev => (prev.trim() + `\n${player.name} ${parseInt(player.code, 10)}`).trim());
-    }
+    setRawText(prev => (prev.trim() + `\n${player.name} ${parseInt(player.code, 10)}`).trim());
   };
 
   const handleRemovePlayerFromList = (player: Player) => {
     const numCode = parseInt(player.code, 10);
     const removeLine = (text: string) => text.split('\n').filter(line => getLineCode(line) !== numCode).join('\n');
-
-    if (showPlayerSelector === 'champion') {
-      setChampionText(prev => removeLine(prev).trim());
-    } else if (showPlayerSelector === 'general') {
-      setRawText(prev => removeLine(prev).trim());
-    }
-  };
-
-  const cleanNames = (text: string) => {
-    return text.split('\n')
-      .map(line => line.replace(/^[\d\.\-\:\)\(\[\]\s]+/, '').replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '').trim())
-      .filter(name => name.length >= 2);
-  };
-
-  // Extrai nome + código do formato manual "Nome Número" (uma linha por jogador) — usado só
-  // pelo modo campeão, cujas duas caixas de colagem separadas continuam com o parser simples.
-  const getPlayerDataFromLine = (lineText: string, isChamp: boolean, allDbPlayers: Player[]): Player => {
-    const tokens = lineText.trim().split(/\s+/);
-    const lastToken = tokens[tokens.length - 1];
-    const hasCode = tokens.length > 1 && /^\d+$/.test(lastToken);
-    const extractedCode = hasCode ? lastToken : null;
-    const cleanName = hasCode ? tokens.slice(0, -1).join(' ') : lineText.trim();
-    return resolvePlayer(cleanName, extractedCode, isChamp, allDbPlayers);
+    setRawText(prev => removeLine(prev).trim());
   };
 
   const handleGenerateList = async () => {
     const allDbPlayers = await db.getAllPlayers();
 
-    if (useChampionMode) {
-      const champions = cleanNames(championText);
-      const challengers = cleanNames(rawText);
-
-      if (champions.length !== 5) { alert("Time campeão deve ter 5."); return; }
-      const total = champions.length + challengers.length;
-      if (total !== 20 && !confirm(`Total: ${total}. Continuar?`)) return;
-
-      const championObjs = champions.map(line => getPlayerDataFromLine(line, true, allDbPlayers));
-      const challengerObjs = challengers.slice(0, 15).map(line => getPlayerDataFromLine(line, false, allDbPlayers));
-      setPlayers([...championObjs, ...challengerObjs]);
-      setStep('classify');
-      return;
-    }
-
-    // Fora do modo campeão: parser tolerante ao formato bagunçado do WhatsApp,
-    // com uma etapa de pré-visualização antes de seguir pra classificação.
+    // Parser tolerante ao formato bagunçado do WhatsApp, com uma etapa de
+    // pré-visualização (incluindo marcação do time campeão) antes de classificar.
     const { lines, discardedLines: discarded } = parseConvocationList(rawText);
     if (lines.length === 0) { alert("Nenhum jogador reconhecido na lista colada."); return; }
 
@@ -398,7 +346,6 @@ const App: React.FC = () => {
       localStorage.removeItem('snpp_teams');
       localStorage.removeItem('snpp_draw_groups');
       setRawText('');
-      setChampionText('');
     }
   };
 
@@ -494,7 +441,7 @@ const App: React.FC = () => {
       {/* MODAL DE SELEÇÃO DE JOGADORES */}
       {showPlayerSelector && (
         <PlayerSelectionModal 
-          onClose={() => setShowPlayerSelector(null)} 
+          onClose={() => setShowPlayerSelector(false)}
           onSelect={handleSelectPlayerFromDb}
           onRemove={handleRemovePlayerFromList}
           usedCodes={extractUsedCodes()} 
@@ -645,30 +592,15 @@ const App: React.FC = () => {
               <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} className="w-full bg-slate-950 border border-slate-700 rounded-xl p-3 text-white focus:border-orange-500 outline-none font-bold" />
             </div>
             <div className="border-t border-slate-800 my-6"></div>
-            <div className="mb-6 p-4 bg-slate-950 border border-slate-800 rounded-xl flex items-center gap-4 cursor-pointer hover:border-orange-500/50 transition-colors" onClick={() => setUseChampionMode(!useChampionMode)}>
-              <div className={`w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all ${useChampionMode ? 'bg-orange-500 border-orange-500' : 'border-slate-600'}`}>{useChampionMode && <i className="fa-solid fa-check text-white text-sm"></i>}</div>
-              <div><h3 className="font-bold text-white">Time Campeão da Pelada Anterior?</h3><p className="text-xs text-slate-400">Marque para manter os 5 campeões juntos no Time 1.</p></div>
-            </div>
-            {useChampionMode && (
-              <div className="mb-6 animate-in slide-in-from-top-2 duration-300">
-                <div className="flex justify-between items-end mb-2">
-                  <label className="block text-sm font-bold text-yellow-500 uppercase tracking-wider"><i className="fa-solid fa-trophy mr-1"></i> Lista do Time Campeão</label>
-                  <button onClick={() => setShowPlayerSelector('champion')} className="text-xs bg-slate-800 hover:bg-yellow-600 hover:text-white text-yellow-500 px-3 py-1 rounded border border-yellow-500/30 transition-colors font-bold">
-                    <i className="fa-solid fa-list"></i> Inserir do Cadastro
-                  </button>
-                </div>
-                <textarea className="w-full h-32 p-4 bg-[#1a1c2e] border-2 border-yellow-500/30 rounded-xl focus:ring-2 focus:ring-yellow-500 focus:border-transparent outline-none resize-none font-mono text-sm text-yellow-100 placeholder-yellow-500/20" placeholder="Cole aqui os 5 nomes... (ex: Nome 7)" value={championText} onChange={(e) => setChampionText(e.target.value)} />
-              </div>
-            )}
             <div className="mb-6">
               <div className="flex justify-between items-end mb-2">
-                <label className="block text-sm font-bold text-slate-300 uppercase tracking-wider">{useChampionMode ? `Lista dos Desafiantes` : `Lista Completa (20 Atletas)`}</label>
-                <button onClick={() => setShowPlayerSelector('general')} className="text-xs bg-slate-800 hover:bg-orange-600 hover:text-white text-orange-500 px-3 py-1 rounded border border-orange-500/30 transition-colors font-bold">
+                <label className="block text-sm font-bold text-slate-300 uppercase tracking-wider">Lista Completa (20 Atletas)</label>
+                <button onClick={() => setShowPlayerSelector(true)} className="text-xs bg-slate-800 hover:bg-orange-600 hover:text-white text-orange-500 px-3 py-1 rounded border border-orange-500/30 transition-colors font-bold">
                   <i className="fa-solid fa-list"></i> Inserir do Cadastro
                 </button>
               </div>
               <p className="text-xs text-slate-500 mb-2">* Dica: Digite "Apelido 7" para puxar o cadastro do jogador #007 automaticamente.</p>
-              <textarea className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700" placeholder={useChampionMode ? "Cole aqui os outros jogadores..." : "Cole a lista completa..."} value={rawText} onChange={(e) => setRawText(e.target.value)} />
+              <textarea className="w-full h-48 p-4 bg-slate-950 border-2 border-slate-800 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent outline-none resize-none font-mono text-sm text-gray-200 placeholder-slate-700" placeholder="Cole a lista completa..." value={rawText} onChange={(e) => setRawText(e.target.value)} />
             </div>
             <button onClick={handleGenerateList} disabled={!rawText.trim()} className="w-full py-4 bg-orange-500 hover:bg-orange-600 disabled:bg-slate-800 disabled:text-slate-600 text-white font-bold rounded-xl shadow-lg shadow-orange-500/20 transition-all active:scale-95 flex items-center justify-center gap-2">INICIAR CONVOCAÇÃO <i className="fa-solid fa-arrow-right"></i></button>
           </div>
