@@ -1,4 +1,4 @@
-import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, increment } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, setDoc, updateDoc, deleteDoc, increment, writeBatch } from 'firebase/firestore';
 import { firestore } from './firebase';
 import { Pelada, PeladaTeam, PeladaPlayerResult, Team } from '../types';
 
@@ -184,6 +184,43 @@ export const peladasDb = {
       result[playerId] = { bias, sampleSize: deltas.length };
     });
     return result;
+  },
+
+  // "Ponto de restauração" do ranking: em vez de guardar backups, recalcula titles/goals/
+  // yellowCards/redCards de todo o cadastro do zero, somando só as peladas 'concluída' salvas
+  // no histórico (fonte de verdade). Corrige qualquer edição ou zeragem acidental no cadastro
+  // — inclusive as feitas pelos botões "Zerar Títulos/Gols/Cartões" acima.
+  recalculateStatsFromHistory: async (): Promise<void> => {
+    const [peladas, playersSnapshot] = await Promise.all([
+      peladasDb.getAll(),
+      getDocs(collection(firestore, PLAYERS_COLLECTION)),
+    ]);
+
+    const totals = new Map<string, { goals: number; yellowCards: number; redCards: number; titles: number }>();
+    const ensure = (playerId: string) => {
+      if (!totals.has(playerId)) totals.set(playerId, { goals: 0, yellowCards: 0, redCards: 0, titles: 0 });
+      return totals.get(playerId)!;
+    };
+
+    peladas.filter(p => p.status === 'concluída').forEach(pelada => {
+      pelada.teams.forEach(team => {
+        const isChampionTeam = team.id === pelada.championTeamId;
+        team.players.forEach(p => {
+          const t = ensure(p.playerId);
+          t.goals += p.goals;
+          t.yellowCards += p.yellowCards;
+          t.redCards += p.redCards;
+          if (isChampionTeam) t.titles += 1;
+        });
+      });
+    });
+
+    const batch = writeBatch(firestore);
+    playersSnapshot.docs.forEach(d => {
+      const t = totals.get(d.id) ?? { goals: 0, yellowCards: 0, redCards: 0, titles: 0 };
+      batch.update(d.ref, t);
+    });
+    await batch.commit();
   },
 };
 

@@ -47,6 +47,7 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
   // Estado para REVISÃO DE NÍVEIS SUGERIDA (aprendizado histórico)
   const [levelReview, setLevelReview] = useState<{ player: Player; bias: HistoricalBias; suggestedLevel: number }[] | null>(null);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -123,6 +124,20 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
       setRankingLinkCopied(true);
       setTimeout(() => setRankingLinkCopied(false), 2000);
     });
+  };
+
+  // "Ponto de restauração": recalcula titles/goals/cartões do zero a partir do histórico de
+  // peladas concluídas, corrigindo qualquer edição ou zeragem acidental no cadastro.
+  const handleRecalculateStats = async () => {
+    if (!confirm('Isso vai recalcular títulos, gols e cartões de TODOS os jogadores a partir do histórico de peladas concluídas, sobrescrevendo os valores atuais do cadastro. Continuar?')) return;
+    setIsRecalculating(true);
+    try {
+      await peladasDb.recalculateStatsFromHistory();
+      await loadPlayers();
+      alert('Estatísticas recalculadas com sucesso a partir do histórico.');
+    } finally {
+      setIsRecalculating(false);
+    }
   };
 
   const handleResetTitles = async () => {
@@ -433,6 +448,14 @@ const AdminPanel: React.FC<AdminPanelProps> = ({ onBack }) => {
           </button>
           <button onClick={handleResetCards} className="px-3 py-2 bg-slate-800 hover:bg-red-600 text-slate-300 hover:text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-2 border border-slate-700">
             <i className="fa-solid fa-broom"></i> Zerar Cartões
+          </button>
+          <button
+            onClick={handleRecalculateStats}
+            disabled={isRecalculating}
+            className="px-3 py-2 bg-slate-800 hover:bg-green-600 disabled:opacity-50 disabled:hover:bg-slate-800 text-slate-300 hover:text-white font-bold rounded-lg text-xs transition-colors flex items-center gap-2 border border-slate-700"
+            title="Recalcula títulos, gols e cartões de todos os jogadores a partir do histórico de peladas — corrige edições ou zeragens acidentais."
+          >
+            <i className={`fa-solid ${isRecalculating ? 'fa-spinner fa-spin' : 'fa-clock-rotate-left'}`}></i> Recalcular do Histórico
           </button>
         </div>
 
